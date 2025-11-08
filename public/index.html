@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="
+          default-src 'self';
+          script-src 'self';
+          style-src 'self' 'unsafe-inline';
+          img-src 'self' data: blob:;
+          connect-src 'self' https://newbrain.pabs.ai;
+          font-src 'self' https://at.alicdn.com;
+        ">
+  <title>ConexiónWA‑Pabs.ai</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+  <div class="evo-panel">
+    <!-- Título principal -->
+    <h1>Bienvenido al asistente para conectar el WhatsApp a Pabs.ai</h1>
+
+    <!-- Instrucciones paso a paso -->
+    <ol class="steps">
+      <li>
+        <strong>Paso 1.</strong>
+        En la barra de la izquierda, haz clic en Configuración y copia el <em>"Location ID"</em> (Id. de la ubicación).
+      </li>
+      <li>
+        <strong>Paso 2.</strong>
+        Pega tu <em>"Location ID"</em> en esta caja:
+        <input id="loc-id" placeholder="e.g. jWmSWXQwy7qnsMPdZdn8" />
+      </li>
+      <li>
+        <strong>Paso 3.</strong>
+        Haz clic en <kbd>Revisar conexión</kbd>. Si no estás conectado verás un código QR, escanealo con tu WhatsApp.
+        o se confirmará que ya estás conectado.
+      </li>
+    </ol>
+
+    <!-- Botón único -->
+    <button id="btn-generate">Revisar conexión</button>
+
+    <!-- Área de resultado (QR o mensaje) -->
+    <div id="evo-output"></div>
+  </div>
+
+  <script src="panel.js" defer></script>
+</body>
+</html>

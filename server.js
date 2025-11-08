@@ -1,0 +1,187 @@
+const express = require('express');
+const fetch = require('node-fetch');
+const path = require('path');
+const axios = require('axios');
+const config = require('./config');
+const logger = require('./utils/logger');
+const { handleGHLWebhook } = require('./webhooks/ghl');
+const { handleWhatsAppWebhook } = require('./webhooks/whatsapp');
+const { updateGHLTokens } = require('./services/supabase');
+const { createClient } = require('@supabase/supabase-js');
+
+const supabase = createClient(config.SUPABASE_URL, config.SUPABASE_KEY);
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Webhooks
+app.post('/webhook/ghl', handleGHLWebhook);
+app.post('/webhook/whatsapp', handleWhatsAppWebhook);
+
+// Legacy proxy genérico (NO MODIFICAR)
+app.all('/api/:action', async (req, res) => {
+  const { action } = req.params;
+  const locationId = req.method === 'GET'
+    ? req.query.locationId
+    : req.body.locationId;
+  if (!locationId) {
+    return res.status(400).json({ error: 'locationId missing' });
+  }
+
+  let url = `${config.N8N_BASE_URL}/webhook/${action}`;
+  let opts = { method: req.method, headers: { Authorization: config.N8N_AUTH_HEADER } };
+
+  // GET: pasamos locationId como query; POST/PUT: en body
+  if (req.method === 'GET') {
+    url += `?locationId=${encodeURIComponent(locationId)}`;
+  } else {
+    opts.headers['Content-Type'] = 'application/json';
+    opts.body = JSON.stringify({ locationId, ...req.body });
+  }
+
+  try {
+    const proxyRes = await fetch(url, opts);
+    const contentType = proxyRes.headers.get('content-type') || '';
+    const data = contentType.includes('application/json')
+      ? await proxyRes.json()
+      : await proxyRes.buffer();
+    res.status(proxyRes.status).type(contentType).send(data);
+  } catch (err) {
+    logger.error('Proxy error', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// OAuth: Iniciar flujo
+app.get('/oauth/ghl/connect', (req, res) => {
+  const { location_id } = req.query;
+  
+  if (!location_id) {
+    return res.status(400).json({ error: 'location_id required' });
+  }
+  
+  const scopes = [
+    'contacts.readonly',
+    'contacts.write',
+    'conversations.readonly',
+    'conversations.write',
+    'conversations/message.readonly',
+    'conversations/message.write'
+  ].join(' ');
+  
+  const authUrl = `https://marketplace.gohighlevel.com/oauth/chooselocation?` +
+    `response_type=code` +
+    `&client_id=${config.GHL_CLIENT_ID}` +
+    `&redirect_uri=${encodeURIComponent(config.GHL_REDIRECT_URI)}` +
+    `&scope=${encodeURIComponent(scopes)}` +
+    `&state=${location_id}`;
+  
+  res.redirect(authUrl);
+});
+
+// OAuth: Callback
+app.get('/auth/ghl/callback', async (req, res) => {
+  const { code, state: locationId } = req.query;
+  
+  if (!code || !locationId) {
+    return res.status(400).send('Missing code or location_id');
+  }
+  
+  try {
+    // Intercambiar code por tokens
+    const response = await axios.post('https://services.leadconnectorhq.com/oauth/token', {
+      client_id: config.GHL_CLIENT_ID,
+      client_secret: config.GHL_CLIENT_SECRET,
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: config.GHL_REDIRECT_URI
+    });
+    
+    const { access_token, refresh_token, expires_in } = response.data;
+    
+    // Guardar en Supabase
+    await updateGHLTokens(locationId, access_token, refresh_token, expires_in);
+    
+    logger.info('OAuth completed', { locationId });
+    
+    res.send(`
+      <h1>✅ Conexión exitosa</h1>
+      <p>GHL conectado para location: ${locationId}</p>
+      <p>Puedes cerrar esta ventana.</p>
+    `);
+    
+  } catch (error) {
+    logger.error('OAuth callback error', { error: error.message });
+    res.status(500).send('Error en OAuth: ' + error.message);
+  }
+});
+
+// Health Check
+app.get('/health', async (req, res) => {
+  const health = {
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    services: {}
+  };
+  
+  // Check Supabase
+  try {
+    await supabase.from('clients_details').select('id').limit(1);
+    health.services.supabase = 'connected';
+  } catch (error) {
+    health.services.supabase = 'error';
+    health.status = 'degraded';
+  }
+  
+  // Check Evolution API
+  try {
+    await axios.get(`${config.EVOLUTION_BASE_URL}/health`, { timeout: 3000 });
+    health.services.evolution_api = 'reachable';
+  } catch (error) {
+    health.services.evolution_api = 'unreachable';
+    health.status = 'degraded';
+  }
+  
+  // Check OpenAI
+  try {
+    await axios.get('https://api.openai.com/v1/models', {
+      headers: { 'Authorization': `Bearer ${config.OPENAI_API_KEY}` },
+      timeout: 3000
+    });
+    health.services.openai = 'reachable';
+  } catch (error) {
+    health.services.openai = 'unreachable';
+    health.status = 'degraded';
+  }
+  
+  const statusCode = health.status === 'ok' ? 200 : 503;
+  res.status(statusCode).json(health);
+});
+
+// Evita cerrar el servidor si se están ejecutando flujos
+let server;
+
+function gracefulShutdown(signal) {
+  logger.info(`${signal} received, closing server gracefully`);
+  
+  server.close(() => {
+    logger.info('Server closed');
+    process.exit(0);
+  });
+  
+  // Forzar cierre después de 30 segundos
+  setTimeout(() => {
+    logger.error('Forced shutdown after 30s timeout');
+    process.exit(1);
+  }, 30000);
+}
+
+server = app.listen(PORT, () => {
+  logger.info(`Server running on port ${PORT}`);
+});
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));

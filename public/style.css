@@ -1,0 +1,82 @@
+/* Layout general del panel */
+.evo-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 480px;
+  margin: 2rem auto;
+  padding: 1.5rem;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+  background-color: #fff;
+  font-family: sans-serif;
+}
+
+/* Título centrado */
+.evo-panel h1 {
+  text-align: center;
+  margin-bottom: 1.5rem;
+  font-size: 1.95rem;
+  color: #313131;
+}
+
+/* Lista de pasos */
+.steps {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1.5rem;
+  width: 100%;
+}
+.steps li {
+  margin-bottom: 1rem;
+  font-size: 1.05rem;
+  color: #313131;
+}
+.steps li strong {
+  color: #0066FF;
+}
+.steps li input {
+  display: block;
+  width: 100%;
+  padding: 0.5rem;
+  margin-top: 0.25rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+/* Botón “Revisar conexión” */
+#btn-generate {
+  background-color: #0066FF;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  margin-bottom: 1.5rem;
+}
+#btn-generate:hover {
+  background-color: #0053CC;
+}
+
+/* Salida del QR o mensaje */
+#evo-output {
+  width: 100%;
+  min-height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f9f9f9;
+  border: 1px dashed #ddd;
+  border-radius: 4px;
+  padding: 1rem;
+}
+#evo-output img {
+  max-width: 100%;
+  height: auto;
+}
+#evo-output p {
+  color: #333;
+  font-size: 1rem;
+}
