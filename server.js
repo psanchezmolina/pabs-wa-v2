@@ -112,12 +112,18 @@ app.get('/auth/credentials2/callback', async (req, res) => {
     });
 
     // Intercambiar code por tokens
-    const response = await axios.post('https://services.leadconnectorhq.com/oauth/token', {
-      client_id: config.GHL_CLIENT_ID,
-      client_secret: config.GHL_CLIENT_SECRET,
-      grant_type: 'authorization_code',
-      code,
-      redirect_uri: config.GHL_REDIRECT_URI
+    // GHL requiere application/x-www-form-urlencoded
+    const params = new URLSearchParams();
+    params.append('client_id', config.GHL_CLIENT_ID);
+    params.append('client_secret', config.GHL_CLIENT_SECRET);
+    params.append('grant_type', 'authorization_code');
+    params.append('code', code);
+    params.append('redirect_uri', config.GHL_REDIRECT_URI);
+
+    const response = await axios.post('https://services.leadconnectorhq.com/oauth/token', params, {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      }
     });
 
     const { access_token, refresh_token, expires_in } = response.data;
