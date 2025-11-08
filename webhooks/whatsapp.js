@@ -126,33 +126,22 @@ async function handleWhatsAppWebhook(req, res) {
 
     log.info('✅ Step 3 COMPLETE: Message processed', { contentType, messageText: messageText.substring(0, 100) });
     
-    // Buscar o crear contacto en GHL (estrategia de 3 niveles)
+    // Buscar o crear contacto en GHL (formato E.164 estándar)
     log.info('🔍 Step 4: Searching for contact in GHL...', { phone });
     let contactId;
 
-    // NIVEL 1: Buscar con formato completo (con +)
-    let searchResult = await ghlAPI.searchContact(client, phone);
-    log.info('📊 Contact search result (level 1)', {
+    // Buscar con formato E.164 estándar (único formato oficial de GHL)
+    const searchResult = await ghlAPI.searchContact(client, phone);
+    log.info('📊 Contact search result', {
       total: searchResult.total,
-      format: 'with +'
+      format: 'E.164'
     });
-
-    // NIVEL 2: Si no encuentra, buscar con formato alternativo
-    if (searchResult.total === 0) {
-      const cleanPhone = phone.replace(/\D+/g, ''); // Solo dígitos
-      log.info('🔍 Trying alternative phone format...', { cleanPhone });
-      searchResult = await ghlAPI.searchContact(client, cleanPhone);
-      log.info('📊 Contact search result (level 2)', {
-        total: searchResult.total,
-        format: 'digits only'
-      });
-    }
 
     if (searchResult.total > 0) {
       contactId = searchResult.contacts[0].id;
       log.info('✅ Step 4 COMPLETE: Contact found', { contactId, phone });
     } else {
-      // NIVEL 3: Crear contacto (con fallback de duplicado)
+      // No existe, crear contacto (con fallback de duplicado)
       log.info('➕ Creating new contact...', { userName, phone });
       try {
         const newContact = await ghlAPI.createContact(client, userName, phone);

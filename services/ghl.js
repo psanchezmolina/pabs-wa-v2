@@ -89,18 +89,17 @@ async function getContact(client, contactId) {
 }
 
 async function searchContact(client, phone) {
-  const cleanPhone = phone.replace(/\D+/g, '');
-  
+  // NO limpiar el teléfono - buscar con el formato exacto que se pasa
   const response = await ghlRequest(client, 'POST', '/contacts/search', {
     locationId: client.location_id,
     pageLimit: 20,
     filters: [{
       field: 'phone',
       operator: 'eq',
-      value: cleanPhone
+      value: phone
     }]
   });
-  
+
   return response.data;
 }
 

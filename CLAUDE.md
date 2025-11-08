@@ -281,9 +281,14 @@ const description = await openaiAPI.analyzeImage(media.base64);
 
 ## Known Issues & Caveats
 
-- El webhook de Evolution API debe configurarse por instancia: `https://domain.com/webhook/whatsapp`
+- **Webhook de Evolution API:** Configurar el MISMO webhook para TODAS las instancias: `https://domain.com/webhook/whatsapp`. El servidor identifica automáticamente la instancia por el campo `instance` del payload
 - Los tokens GHL expiran (típicamente 24h) - el auto-refresco maneja esto
-- **Números de teléfono:** GHL usa `+34XXX`, WhatsApp necesita `34XXX@s.whatsapp.net`
+- **Números de teléfono - Formato E.164:**
+  - GHL usa formato **E.164 estándar**: `+34660722687` (único formato oficial soportado)
+  - WhatsApp envía: `34660722687@s.whatsapp.net`
+  - Conversión automática: se quita `@s.whatsapp.net` y se añade `+` al inicio
+  - **Búsqueda optimizada:** Solo se busca en formato E.164 (1 llamada vs 3 llamadas multi-formato)
+  - Si falla create por duplicado, se extrae el `contactId` del error (fallback inteligente)
 - **Cálculo de retraso de mensaje:** `Math.min(Math.max(text.length * 50, 2000), 10000)`
 - Las notificaciones de admin requieren que `ADMIN_INSTANCE` exista en la tabla `clients_details`
 

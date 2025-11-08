@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(cat:*)",
-      "WebFetch(domain:marketplace.gohighlevel.com)"
+      "WebFetch(domain:marketplace.gohighlevel.com)",
+      "WebSearch"
     ],
     "deny": [],
     "ask": []
