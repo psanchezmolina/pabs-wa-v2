@@ -13,12 +13,15 @@ function validateGHLPayload(body) {
     return { valid: false, missing: 'body or message' };
   }
 
-  // Solo procesar mensajes OUTBOUND
-  // Puede ser: direction === 'outbound' O type === 'SMS'
-  const isOutbound = body.direction === 'outbound' || body.type === 'SMS';
+  // Ignorar mensajes que ya están delivered/read (son notificaciones)
+  if (body.status === 'delivered' || body.status === 'read') {
+    return { valid: false, reason: 'Message already delivered/read' };
+  }
 
-  if (!isOutbound) {
-    return { valid: false, reason: 'Not an outbound message' };
+  // Solo procesar tipo SMS (el primero que llega)
+  // OutboundMessage son retries/notificaciones que ignoramos
+  if (body.type !== 'SMS') {
+    return { valid: false, reason: 'Only SMS type processed' };
   }
 
   return { valid: true };
