@@ -31,6 +31,8 @@ app.use((req, res, next) => {
 // Webhooks
 app.post('/webhook/ghl', handleGHLWebhook);
 app.post('/webhook/whatsapp', handleWhatsAppWebhook);
+// Evolution API envía eventos con el tipo en la ruta (ej: /webhook/whatsapp/messages-upsert)
+app.post('/webhook/whatsapp/*', handleWhatsAppWebhook);
 
 // Legacy proxy genérico (NO MODIFICAR)
 app.all('/api/:action', async (req, res) => {
