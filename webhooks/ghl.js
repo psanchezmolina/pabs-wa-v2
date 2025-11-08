@@ -99,19 +99,36 @@ async function handleGHLWebhook(req, res) {
         errorData: sendError.response?.data,
         stack: sendError.stack
       });
-      
+
       // Verificar si tiene WhatsApp
+      logger.info('Checking if number has WhatsApp', { contactPhone });
+
       const hasWhatsApp = await evolutionAPI.checkWhatsAppNumber(
         client.instance_name,
         client.instance_apikey,
         contactPhone
       );
-      
+
+      logger.info('WhatsApp verification result', {
+        contactPhone,
+        hasWhatsApp: !!hasWhatsApp
+      });
+
       if (!hasWhatsApp) {
-        // Subir nota a GHL
+        logger.info('Number does not have WhatsApp - notifying in GHL conversation', {
+          contactId
+        });
+
+        // Buscar conversación
         const conversationSearch = await ghlAPI.searchConversation(client, contactId);
         const conversationId = conversationSearch.conversations?.[0]?.id;
-        
+
+        logger.info('Conversation search result', {
+          contactId,
+          conversationId,
+          totalConversations: conversationSearch.total
+        });
+
         if (conversationId) {
           await ghlAPI.sendInboundMessage(
             client,
@@ -119,26 +136,31 @@ async function handleGHLWebhook(req, res) {
             contactId,
             'NOTA: El contacto no tiene WhatsApp'
           );
+
+          logger.info('✅ Notification sent to GHL conversation', { conversationId });
+        } else {
+          logger.warn('No conversation found to send notification', { contactId });
         }
       }
-      
-      // Notificar admin
-      await notifyAdmin('Failed to send WhatsApp message', {
-        location_id: locationId,
-        error: sendError.message
-      });
-      
+
+      // No notificar al admin por ahora (requiere ADMIN_INSTANCE_APIKEY)
+      // await notifyAdmin('Failed to send WhatsApp message', {
+      //   location_id: locationId,
+      //   error: sendError.message
+      // });
+
       return res.status(500).json({ error: 'Failed to send message' });
     }
     
   } catch (error) {
     logger.error('GHL webhook error', { error: error.message, stack: error.stack });
-    
-    await notifyAdmin('GHL Webhook Error', {
-      location_id: req.body?.locationId,
-      error: error.message
-    });
-    
+
+    // No notificar al admin por ahora (requiere ADMIN_INSTANCE_APIKEY)
+    // await notifyAdmin('GHL Webhook Error', {
+    //   location_id: req.body?.locationId,
+    //   error: error.message
+    // });
+
     return res.status(500).json({ error: 'Internal server error' });
   }
 }
