@@ -75,7 +75,14 @@ app.get('/oauth/ghl/connect', (req, res) => {
     'conversations.readonly',
     'conversations.write',
     'conversations/message.readonly',
-    'conversations/message.write'
+    'conversations/message.write',
+    'locations.readonly',
+    'opportunities.readonly',
+    'opportunities.write',
+    'users.readonly',
+    'calendars.readonly',
+    'calendars.write',
+    'calendars/events.write'
   ].join(' ');
   
   const authUrl = `https://marketplace.gohighlevel.com/oauth/chooselocation?` +
