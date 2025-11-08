@@ -44,9 +44,16 @@ app.all('/api/:action', async (req, res) => {
   try {
     const proxyRes = await fetch(url, opts);
     const contentType = proxyRes.headers.get('content-type') || '';
-    const data = contentType.includes('application/json')
-      ? await proxyRes.json()
-      : await proxyRes.buffer();
+    let data;
+
+    if (contentType.includes('application/json')) {
+      data = await proxyRes.json();
+    } else {
+      // Fetch nativo usa arrayBuffer(), convertir a Buffer para Express
+      const arrayBuffer = await proxyRes.arrayBuffer();
+      data = Buffer.from(arrayBuffer);
+    }
+
     res.status(proxyRes.status).type(contentType).send(data);
   } catch (err) {
     logger.error('Proxy error', { error: err.message });
