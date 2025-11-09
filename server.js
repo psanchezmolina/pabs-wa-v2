@@ -19,8 +19,18 @@ const PORT = process.env.PORT || 3000;
 
 // Security headers
 app.use(helmet({
-  contentSecurityPolicy: false, // Permitir QR panel legacy
-  frameguard: { action: 'deny' }
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "blob:"],
+      connectSrc: ["'self'", config.N8N_BASE_URL],
+      fontSrc: ["'self'", "https://at.alicdn.com"],
+      frameAncestors: ["'self'", "https://*.gohighlevel.com", "https://*.highlevel.company", "https://*.pabs.ai", "https://*.roisnap.com"]
+    }
+  },
+  frameguard: false // Desactivar X-Frame-Options para permitir iframe en GHL
 }));
 
 // CORS - permitir todos los orígenes (webhooks vienen de múltiples fuentes)
