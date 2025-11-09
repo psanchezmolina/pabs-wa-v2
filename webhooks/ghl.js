@@ -33,13 +33,14 @@ async function handleGHLWebhook(req, res) {
 
     logger.info('✅ GHL webhook validated', { locationId, contactId, messageId, messageText });
 
-    // Buscar cliente
-    const client = await getClientByLocationId(locationId);
+    // Obtener cliente (viene de middleware o buscar en BD como fallback)
+    const client = req.client || await getClientByLocationId(locationId);
 
     logger.info('Client found', {
       locationId,
       instanceName: client.instance_name,
-      hasApiKey: !!client.instance_apikey
+      hasApiKey: !!client.instance_apikey,
+      fromCache: !!req.client
     });
 
     // Obtener teléfono del contacto

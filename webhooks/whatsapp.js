@@ -5,6 +5,7 @@ const { getClientByInstanceName } = require('../services/supabase');
 const ghlAPI = require('../services/ghl');
 const evolutionAPI = require('../services/evolution');
 const openaiAPI = require('../services/openai');
+const { getCachedContactId, setCachedContactId, getCachedConversationId, setCachedConversationId } = require('../services/cache');
 
 async function handleWhatsAppWebhook(req, res) {
   // Detectar si es el número de debug para logging
@@ -40,9 +41,9 @@ async function handleWhatsAppWebhook(req, res) {
       fromMe: messageData.key.fromMe
     });
     
-    // Buscar cliente (crítico para multi-tenant)
-    log.info('🔍 Step 2: Searching for client by instance name...', { instance });
-    const client = await getClientByInstanceName(instance);
+    // Obtener cliente (viene de middleware o buscar en BD como fallback)
+    log.info('🔍 Step 2: Getting client...', { instance });
+    const client = req.client || await getClientByInstanceName(instance);
 
     if (!client) {
       logger.error('❌ Client not found in database', { instance });
@@ -56,7 +57,8 @@ async function handleWhatsAppWebhook(req, res) {
     log.info('✅ Step 2 COMPLETE: Client found', {
       instance,
       location_id: client.location_id,
-      conversation_provider_id: client.conversation_provider_id
+      conversation_provider_id: client.conversation_provider_id,
+      fromMiddleware: !!req.client
     });
 
     // Extraer datos
@@ -208,34 +210,44 @@ async function handleWhatsAppWebhook(req, res) {
     log.info('🔍 Step 4: Searching for contact in GHL...', { phone });
     let contactId;
 
-    // Buscar con formato E.164 estándar (único formato oficial de GHL)
-    const searchResult = await ghlAPI.searchContact(client, phone);
-    log.info('📊 Contact search result', {
-      total: searchResult.total,
-      format: 'E.164'
-    });
+    // Verificar caché primero
+    contactId = getCachedContactId(client.location_id, phone);
 
-    if (searchResult.total > 0) {
-      contactId = searchResult.contacts[0].id;
-      log.info('✅ Step 4 COMPLETE: Contact found', { contactId, phone });
+    if (contactId) {
+      log.info('✅ Step 4 COMPLETE: Contact found in cache', { contactId, phone });
     } else {
-      // No existe, crear contacto (con fallback de duplicado)
-      log.info('➕ Creating new contact...', { userName, phone });
-      try {
-        const newContact = await ghlAPI.createContact(client, userName, phone);
-        contactId = newContact.id;
-        log.info('✅ Step 4 COMPLETE: Contact created', { contactId, phone });
-      } catch (createError) {
-        // Si falla por duplicado, GHL nos da el contactId en el error
-        if (createError.response?.status === 400 &&
-            createError.response?.data?.meta?.contactId) {
-          contactId = createError.response.data.meta.contactId;
-          log.info('✅ Step 4 COMPLETE: Contact exists (from duplicate error)', {
-            contactId,
-            matchingField: createError.response.data.meta.matchingField
-          });
-        } else {
-          throw createError;
+      // No en caché, buscar en GHL API
+      const searchResult = await ghlAPI.searchContact(client, phone);
+      log.info('📊 Contact search result', {
+        total: searchResult.total,
+        format: 'E.164'
+      });
+
+      if (searchResult.total > 0) {
+        contactId = searchResult.contacts[0].id;
+        setCachedContactId(client.location_id, phone, contactId);
+        log.info('✅ Step 4 COMPLETE: Contact found', { contactId, phone });
+      } else {
+        // No existe, crear contacto (con fallback de duplicado)
+        log.info('➕ Creating new contact...', { userName, phone });
+        try {
+          const newContact = await ghlAPI.createContact(client, userName, phone);
+          contactId = newContact.id;
+          setCachedContactId(client.location_id, phone, contactId);
+          log.info('✅ Step 4 COMPLETE: Contact created', { contactId, phone });
+        } catch (createError) {
+          // Si falla por duplicado, GHL nos da el contactId en el error
+          if (createError.response?.status === 400 &&
+              createError.response?.data?.meta?.contactId) {
+            contactId = createError.response.data.meta.contactId;
+            setCachedContactId(client.location_id, phone, contactId);
+            log.info('✅ Step 4 COMPLETE: Contact exists (from duplicate error)', {
+              contactId,
+              matchingField: createError.response.data.meta.matchingField
+            });
+          } else {
+            throw createError;
+          }
         }
       }
     }
@@ -243,20 +255,31 @@ async function handleWhatsAppWebhook(req, res) {
     // Buscar o crear conversación
     log.info('🔍 Step 5: Searching for conversation in GHL...', { contactId });
     let conversationId;
-    const convSearch = await ghlAPI.searchConversation(client, contactId);
-    log.info('📊 Conversation search result', {
-      total: convSearch.total,
-      conversations: convSearch.conversations?.length
-    });
 
-    if (convSearch.total >= 1) {
-      conversationId = convSearch.conversations[0].id;
-      log.info('✅ Step 5 COMPLETE: Conversation found', { conversationId });
+    // Verificar caché primero
+    conversationId = getCachedConversationId(client.location_id, contactId);
+
+    if (conversationId) {
+      log.info('✅ Step 5 COMPLETE: Conversation found in cache', { conversationId });
     } else {
-      log.info('➕ Creating new conversation...', { contactId });
-      const newConv = await ghlAPI.createConversation(client, contactId);
-      conversationId = newConv.id;
-      log.info('✅ Step 5 COMPLETE: Conversation created', { conversationId });
+      // No en caché, buscar en GHL API
+      const convSearch = await ghlAPI.searchConversation(client, contactId);
+      log.info('📊 Conversation search result', {
+        total: convSearch.total,
+        conversations: convSearch.conversations?.length
+      });
+
+      if (convSearch.total >= 1) {
+        conversationId = convSearch.conversations[0].id;
+        setCachedConversationId(client.location_id, contactId, conversationId);
+        log.info('✅ Step 5 COMPLETE: Conversation found', { conversationId });
+      } else {
+        log.info('➕ Creating new conversation...', { contactId });
+        const newConv = await ghlAPI.createConversation(client, contactId);
+        conversationId = newConv.id;
+        setCachedConversationId(client.location_id, contactId, conversationId);
+        log.info('✅ Step 5 COMPLETE: Conversation created', { conversationId });
+      }
     }
 
     // Calcular direction basándose en fromMe

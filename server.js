@@ -1,19 +1,42 @@
 const express = require('express');
 const path = require('path');
 const axios = require('axios');
+const helmet = require('helmet');
+const cors = require('cors');
+const rateLimit = require('express-rate-limit');
 const config = require('./config');
 const logger = require('./utils/logger');
 const { handleGHLWebhook } = require('./webhooks/ghl');
 const { handleWhatsAppWebhook } = require('./webhooks/whatsapp');
 const { updateGHLTokens } = require('./services/supabase');
 const { createClient } = require('@supabase/supabase-js');
+const { sanitizeObject, sanitizeHeaders } = require('./utils/sanitizer');
+const { validateGHLWebhook, validateWhatsAppWebhook } = require('./utils/webhookAuth');
 
 const supabase = createClient(config.SUPABASE_URL, config.SUPABASE_KEY);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(express.json());
+// Security headers
+app.use(helmet({
+  contentSecurityPolicy: false, // Permitir QR panel legacy
+  frameguard: { action: 'deny' }
+}));
+
+// CORS - permitir todos los orígenes (webhooks vienen de múltiples fuentes)
+app.use(cors());
+
+// Rate limiter solo para OAuth (evitar brute force)
+const oauthLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: 10, // 10 intentos OAuth por IP
+  message: { error: 'Too many OAuth attempts' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+app.use(express.json({ limit: '1mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Log SOLO peticiones del número de debug
@@ -24,20 +47,20 @@ app.use((req, res, next) => {
   if (isDebugNumber) {
     console.log(`\n${'='.repeat(60)}`);
     console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
-    console.log(`Headers:`, req.headers);
+    console.log(`Headers:`, sanitizeHeaders(req.headers));
     if (req.body && Object.keys(req.body).length > 0) {
-      console.log(`Body:`, JSON.stringify(req.body, null, 2));
+      console.log(`Body:`, JSON.stringify(sanitizeObject(req.body), null, 2));
     }
     console.log('='.repeat(60));
   }
   next();
 });
 
-// Webhooks
-app.post('/webhook/ghl', handleGHLWebhook);
-app.post('/webhook/whatsapp', handleWhatsAppWebhook);
+// Webhooks (con validación de whitelist)
+app.post('/webhook/ghl', validateGHLWebhook, handleGHLWebhook);
+app.post('/webhook/whatsapp', validateWhatsAppWebhook, handleWhatsAppWebhook);
 // Evolution API envía eventos con el tipo en la ruta (ej: /webhook/whatsapp/messages-upsert)
-app.post('/webhook/whatsapp/*', handleWhatsAppWebhook);
+app.post('/webhook/whatsapp/*', validateWhatsAppWebhook, handleWhatsAppWebhook);
 
 // Legacy proxy genérico (NO MODIFICAR)
 app.all('/api/:action', async (req, res) => {
@@ -81,7 +104,7 @@ app.all('/api/:action', async (req, res) => {
 });
 
 // OAuth: Iniciar flujo
-app.get('/oauth/ghl/connect', (req, res) => {
+app.get('/oauth/ghl/connect', oauthLimiter, (req, res) => {
   const { location_id } = req.query;
   
   if (!location_id) {
@@ -112,10 +135,10 @@ app.get('/oauth/ghl/connect', (req, res) => {
     `&state=${location_id}`;
 
   res.redirect(authUrl);
-});
+E});
 
 // OAuth: Callback
-app.get('/auth/credentials2/callback', async (req, res) => {
+app.get('/auth/credentials2/callback', oauthLimiter, async (req, res) => {
   const { code, state: locationId } = req.query;
   
   if (!code || !locationId) {

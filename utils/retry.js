@@ -1,6 +1,9 @@
 const axiosRetry = require('axios-retry');
 const axios = require('axios');
 
+// Configurar timeout global (15 segundos)
+axios.defaults.timeout = 15000;
+
 // Configurar axios-retry globalmente
 axiosRetry(axios, {
   retries: 4,

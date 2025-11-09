@@ -4,19 +4,29 @@ const logger = require('../utils/logger');
 const { updateGHLTokens } = require('./supabase');
 const { withRetry } = require('../utils/retry');
 const { notifyAdmin } = require('../utils/notifications');
+const { getCachedToken, setCachedToken, invalidateToken } = require('./cache');
 
 const GHL_API_BASE = 'https://services.leadconnectorhq.com';
 
 // Refresh token si está expirado
 async function ensureValidToken(client) {
-  const now = new Date();
+  const now = Date.now();
+
+  // 1. Verificar caché primero
+  const cached = getCachedToken(client.location_id);
+  if (cached && cached.expiry > now + 5 * 60 * 1000) {
+    return cached.access_token;
+  }
+
+  // 2. Verificar token del objeto client (viene de BD)
   const expiry = new Date(client.ghl_token_expiry);
-  
-  // Si token válido por más de 5 minutos, usar actual
-  if (expiry > new Date(now.getTime() + 5 * 60 * 1000)) {
+  if (expiry > new Date(now + 5 * 60 * 1000)) {
+    // Cachear token válido de BD
+    setCachedToken(client.location_id, client.ghl_access_token, expiry.getTime());
     return client.ghl_access_token;
   }
-  
+
+  // 3. Necesita refresh
   logger.info('Refreshing GHL token', { location_id: client.location_id });
 
   try {
@@ -45,8 +55,15 @@ async function ensureValidToken(client) {
 
     await updateGHLTokens(client.location_id, access_token, refresh_token, expires_in);
 
+    // Actualizar caché con nuevo token
+    const newExpiry = Date.now() + expires_in * 1000;
+    setCachedToken(client.location_id, access_token, newExpiry);
+
     return access_token;
   } catch (error) {
+    // Invalidar caché en caso de error
+    invalidateToken(client.location_id);
+
     logger.error('Failed to refresh GHL token', {
       location_id: client.location_id,
       error: error.message
