@@ -3,7 +3,8 @@
     "allow": [
       "Bash(cat:*)",
       "WebFetch(domain:marketplace.gohighlevel.com)",
-      "WebSearch"
+      "WebSearch",
+      "WebFetch(domain:doc.evolution-api.com)"
     ],
     "deny": [],
     "ask": []

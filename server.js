@@ -194,9 +194,9 @@ app.get('/health', async (req, res) => {
     health.status = 'degraded';
   }
   
-  // Check Evolution API
+  // Check Evolution API (usar endpoint raíz que no requiere auth)
   try {
-    await axios.get(`${config.EVOLUTION_BASE_URL}/health`, { timeout: 3000 });
+    await axios.get(`${config.EVOLUTION_BASE_URL}/`, { timeout: 3000 });
     health.services.evolution_api = 'reachable';
   } catch (error) {
     health.services.evolution_api = 'unreachable';
@@ -298,6 +298,10 @@ function gracefulShutdown(signal) {
 
 server = app.listen(PORT, () => {
   logger.info(`Server running on port ${PORT}`);
+
+  // Iniciar monitor de instancias (cada 4 horas)
+  const { startMonitoring } = require('./utils/instanceMonitor');
+  startMonitoring(4);
 });
 
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));

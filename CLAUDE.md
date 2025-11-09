@@ -22,7 +22,7 @@
 - **Database:** Supabase (PostgreSQL) - tabla `clients_details`
 - **HTTP Client:** Axios + axios-retry (4 reintentos, 800ms de retraso)
 - **Logging:** Winston (logs JSON estructurados)
-- **Testing:** Mocha + Chai + Supertest (post-MVP)
+- **Testing:** Mocha + Chai + Supertest + Nock (27 tests unitarios, 4 integración)
 - **Deploy:** Docker en Easypanel/Contabo VPS
 
 ### External APIs
@@ -50,10 +50,11 @@
 ├── utils/
 │   ├── retry.js          # axios-retry config
 │   ├── logger.js         # Winston logger
-│   ├── notifications.js  # Admin WhatsApp alerts
-│   └── validation.js     # Payload validation
+│   ├── notifications.js  # Sistema notificaciones con agregación
+│   ├── validation.js     # Payload validation + truncamiento
+│   └── instanceMonitor.js # Monitor instancias (cada 4h)
 ├── public/                 # QR panel (DO NOT MODIFY)
-└── test/                   # Tests (phase 3)
+└── test/                   # Tests unitarios e integración
 ```
 
 ---
@@ -102,6 +103,7 @@ EVOLUTION_BASE_URL=https://pabs-evolution-api.r4isqy.easypanel.host
 # Admin alerts
 ADMIN_WHATSAPP=34633839200@s.whatsapp.net
 ADMIN_INSTANCE=pabsai
+ADMIN_INSTANCE_APIKEY=xxx  # Requerido para notificaciones
 
 # Legacy (QR panel)
 N8N_BASE_URL=https://newbrain.pabs.ai
@@ -190,14 +192,42 @@ N8N_AUTH_HEADER=Bearer xxx
 **Procesamiento de mensajes:**
 
 - **Texto:** Usar directamente
-- **Audio:** Transcribir → formatear como `"audio: {text}"`
-- **Imagen:** Analizar → formatear como `"descripcion imagen: {text}"`
+- **Audio:** Transcribir con Whisper → `"audio: {text}"` (fallback: `"🎤 [audio no procesado]"`)
+- **Imagen:** Analizar con Vision → `"descripcion imagen: {text}"` (fallback: `"🖼️ [imagen no procesada]"`)
+- **Video:** Formato básico → `"🎥 [video] - caption"`
+- **Document:** Formato básico → `"📎 [filename] - caption"`
+- **Location:** Formato básico → `"📍 [ubicación]: nombre (lat, lng)"`
+- **Contact:** Formato básico → `"👤 [contacto: nombre]"`
+- **Sticker:** Formato básico → `"😊 [sticker]"`
+
+**Límites:** Mensajes >4096 chars se truncan automáticamente
 
 ### 3. OAuth Flow
 
 1. **Inicio:** `/oauth/ghl/connect?location_id=XXX` redirige a GHL
 2. **Callback:** Intercambiar código por tokens, guardar en Supabase
 3. **Auto-refresco:** Ocurre automáticamente en `ghl.js` cuando el token expira en < 5 min
+
+### 4. Sistema de Notificaciones
+
+**Agregación inteligente (5 min window):**
+- Primer error → Notificación inmediata
+- Errores repetidos → Agrupados automáticamente
+- Envío resumen después de 5 min o al reconectar
+
+**Formato:** Estilo n8n con stack trace, contexto, timestamp (DD/MM/AAAA)
+
+**Triggers:** Token refresh failed, webhook errors, OpenAI failures, instancias desconectadas
+
+### 5. Monitor de Instancias
+
+**Frecuencia:** Cada 4 horas automáticamente
+
+**Funcionalidad:**
+- Verifica conexión de todas las instancias Evolution API (`/instance/connectionState`)
+- Detecta cambios de estado (desconexión/reconexión)
+- Notifica solo en cambios (no spam)
+- Agrupa por cliente afectado
 
 ---
 
@@ -290,7 +320,9 @@ const description = await openaiAPI.analyzeImage(media.base64);
   - **Búsqueda optimizada:** Solo se busca en formato E.164 (1 llamada vs 3 llamadas multi-formato)
   - Si falla create por duplicado, se extrae el `contactId` del error (fallback inteligente)
 - **Cálculo de retraso de mensaje:** `Math.min(Math.max(text.length * 50, 2000), 10000)`
-- Las notificaciones de admin requieren que `ADMIN_INSTANCE` exista en la tabla `clients_details`
+- **Límite mensajes:** >4096 chars se truncan automáticamente con aviso
+- **Fallback OpenAI:** Si Whisper/Vision fallan → `"🎤/🖼️ [no procesado]"` + notificación admin
+- Las notificaciones de admin requieren que `ADMIN_INSTANCE` y `ADMIN_INSTANCE_APIKEY` estén configurados
 
 ---
 
@@ -331,15 +363,29 @@ const description = await openaiAPI.analyzeImage(media.base64);
 
 ---
 
-## Testing (Phase 3)
+## Testing
 
-Una vez que el MVP sea funcional, implementar:
+**Estado:** 27 tests unitarios implementados y funcionando
 
-- Tests unitarios para servicios (Mocha + Chai)
-- Tests de integración para webhooks (Supertest)
-- Mock de APIs externas (Nock)
+### Ejecutar Tests
 
-**Ejecutar con:** `npm test`
+```bash
+npm test                    # Ejecutar todos los tests
+npm run test:watch          # Modo watch (auto-reload)
+npm test -- test/unit/**/*  # Solo tests unitarios
+```
+
+### Cobertura Actual
+
+**✅ Tests Unitarios (test/unit/):**
+- `validation.test.js` - Validación payloads + truncamiento (11 tests)
+- `notifications.test.js` - Sistema notificaciones (5 tests)
+- `ghl.test.js` - Lógica GHL (token refresh, phone format) (9 tests)
+
+**⏳ Tests Integración (test/integration/):**
+- `webhooks.test.js` - HTTP endpoints (4 tests preparados, deshabilitados)
+
+**Documentación:** Ver `test/README.md` para más detalles
 
 ---
 

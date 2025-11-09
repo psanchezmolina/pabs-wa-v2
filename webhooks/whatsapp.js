@@ -1,6 +1,6 @@
 const logger = require('../utils/logger');
 const { notifyAdmin } = require('../utils/notifications');
-const { validateWhatsAppPayload } = require('../utils/validation');
+const { validateWhatsAppPayload, truncateMessage } = require('../utils/validation');
 const { getClientByInstanceName } = require('../services/supabase');
 const ghlAPI = require('../services/ghl');
 const evolutionAPI = require('../services/evolution');
@@ -83,44 +83,120 @@ async function handleWhatsAppWebhook(req, res) {
       contentType = 'audio';
       log.info('🎤 Audio message detected, fetching media...');
 
-      // Obtener audio en base64
-      const audioData = await evolutionAPI.getMediaBase64(
-        client.instance_name,
-        client.instance_apikey,
-        messageId
-      );
-      log.info('✅ Audio fetched, transcribing with Whisper...', { mimetype: audioData.mimetype });
+      try {
+        // Obtener audio en base64
+        const audioData = await evolutionAPI.getMediaBase64(
+          client.instance_name,
+          client.instance_apikey,
+          messageId
+        );
+        log.info('✅ Audio fetched, transcribing with Whisper...', { mimetype: audioData.mimetype });
 
-      // Transcribir con Whisper
-      const transcription = await openaiAPI.transcribeAudio(
-        audioData.base64,
-        audioData.mimetype
-      );
+        // Transcribir con Whisper
+        const transcription = await openaiAPI.transcribeAudio(
+          audioData.base64,
+          audioData.mimetype
+        );
 
-      messageText = `audio: ${transcription}`;
-      log.info('✅ Audio transcribed', { transcription });
+        messageText = `audio: ${transcription}`;
+        log.info('✅ Audio transcribed', { transcription });
+
+      } catch (audioError) {
+        log.error('❌ Failed to process audio', {
+          error: audioError.message,
+          messageId
+        });
+
+        // Fallback: marcar como audio no procesado
+        messageText = '🎤 [audio no procesado]';
+
+        // Notificar al admin del fallo de OpenAI
+        await notifyAdmin('OpenAI Audio Processing Failed', {
+          error: audioError.message,
+          stack: audioError.stack,
+          endpoint: '/webhook/whatsapp',
+          instance_name: client.instance_name,
+          messageId,
+          remoteJid: messageData.key.remoteJid
+        });
+      }
 
     } else if (messageData.message.imageMessage) {
       contentType = 'image';
       log.info('🖼️ Image message detected, fetching media...');
 
-      // Obtener imagen en base64
-      const imageData = await evolutionAPI.getMediaBase64(
-        client.instance_name,
-        client.instance_apikey,
-        messageId
-      );
-      log.info('✅ Image fetched, analyzing with Vision...', { mimetype: imageData.mimetype });
+      try {
+        // Obtener imagen en base64
+        const imageData = await evolutionAPI.getMediaBase64(
+          client.instance_name,
+          client.instance_apikey,
+          messageId
+        );
+        log.info('✅ Image fetched, analyzing with Vision...', { mimetype: imageData.mimetype });
 
-      // Analizar con GPT-4o-mini Vision
-      const description = await openaiAPI.analyzeImage(imageData.base64);
+        // Analizar con GPT-4o-mini Vision
+        const description = await openaiAPI.analyzeImage(imageData.base64);
 
-      const caption = messageData.message.imageMessage.caption || '';
-      messageText = `descripcion imagen: ${description}${caption ? ' - ' + caption : ''}`;
-      log.info('✅ Image analyzed', { description, caption });
+        const caption = messageData.message.imageMessage.caption || '';
+        messageText = `descripcion imagen: ${description}${caption ? ' - ' + caption : ''}`;
+        log.info('✅ Image analyzed', { description, caption });
+
+      } catch (imageError) {
+        log.error('❌ Failed to process image', {
+          error: imageError.message,
+          messageId
+        });
+
+        // Fallback: marcar como imagen no procesada (incluir caption si existe)
+        const caption = messageData.message.imageMessage.caption || '';
+        messageText = `🖼️ [imagen no procesada]${caption ? ' - ' + caption : ''}`;
+
+        // Notificar al admin del fallo de OpenAI
+        await notifyAdmin('OpenAI Image Processing Failed', {
+          error: imageError.message,
+          stack: imageError.stack,
+          endpoint: '/webhook/whatsapp',
+          instance_name: client.instance_name,
+          messageId,
+          remoteJid: messageData.key.remoteJid
+        });
+      }
+
+    } else if (messageData.message.videoMessage) {
+      contentType = 'video';
+      const caption = messageData.message.videoMessage.caption || '';
+      messageText = `🎥 [video]${caption ? ' - ' + caption : ''}`;
+      log.info('🎥 Video message detected', { hasCaption: !!caption });
+
+    } else if (messageData.message.documentMessage) {
+      contentType = 'document';
+      const fileName = messageData.message.documentMessage.fileName || 'documento';
+      const caption = messageData.message.documentMessage.caption || '';
+      messageText = `📎 [${fileName}]${caption ? ' - ' + caption : ''}`;
+      log.info('📎 Document message detected', { fileName, hasCaption: !!caption });
+
+    } else if (messageData.message.locationMessage) {
+      contentType = 'location';
+      const lat = messageData.message.locationMessage.degreesLatitude;
+      const lng = messageData.message.locationMessage.degreesLongitude;
+      const name = messageData.message.locationMessage.name || '';
+      messageText = `📍 [ubicación]${name ? ': ' + name : ''}${lat && lng ? ` (${lat}, ${lng})` : ''}`;
+      log.info('📍 Location message detected', { lat, lng, name });
+
+    } else if (messageData.message.contactMessage) {
+      contentType = 'contact';
+      const displayName = messageData.message.contactMessage.displayName || 'contacto';
+      messageText = `👤 [contacto: ${displayName}]`;
+      log.info('👤 Contact message detected', { displayName });
+
+    } else if (messageData.message.stickerMessage) {
+      contentType = 'sticker';
+      messageText = '😊 [sticker]';
+      log.info('😊 Sticker message detected');
 
     } else {
       log.warn('❌ Unsupported message type', {
+        messageTypes: Object.keys(messageData.message),
         messageData: JSON.stringify(messageData.message, null, 2)
       });
       return res.status(200).json({ success: true, ignored: true });
@@ -186,19 +262,30 @@ async function handleWhatsAppWebhook(req, res) {
     // Calcular direction basándose en fromMe
     const direction = messageData.key.fromMe ? 'outbound' : 'inbound';
 
+    // Truncar mensaje si es muy largo (WhatsApp → GHL)
+    const { text: finalText, truncated, originalLength } = truncateMessage(messageText);
+
+    if (truncated) {
+      log.info('⚠️ Message truncated before uploading to GHL', {
+        originalLength,
+        truncatedLength: finalText.length,
+        contactId
+      });
+    }
+
     // Registrar mensaje en GHL
     log.info('🔍 Step 6: Registering message in GHL...', {
       conversationId,
       contactId,
       direction,
-      messagePreview: messageText.substring(0, 100)
+      messagePreview: finalText.substring(0, 100)
     });
 
     await ghlAPI.registerMessage(
       client,
       conversationId,
       contactId,
-      messageText,
+      finalText,
       direction
     );
 

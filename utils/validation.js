@@ -49,7 +49,23 @@ function validateWhatsAppPayload(body) {
   return { valid: true };
 }
 
+function truncateMessage(message, maxLength = 4096) {
+  if (!message || message.length <= maxLength) {
+    return { text: message, truncated: false };
+  }
+
+  const suffix = '\n\n⚠️ [Mensaje truncado - supera el límite de caracteres]';
+  const truncateAt = maxLength - suffix.length;
+
+  return {
+    text: message.substring(0, truncateAt) + suffix,
+    truncated: true,
+    originalLength: message.length
+  };
+}
+
 module.exports = {
   validateGHLPayload,
-  validateWhatsAppPayload
+  validateWhatsAppPayload,
+  truncateMessage
 };

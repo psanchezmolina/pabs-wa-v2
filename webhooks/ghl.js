@@ -1,6 +1,6 @@
 const logger = require('../utils/logger');
 const { notifyAdmin } = require('../utils/notifications');
-const { validateGHLPayload } = require('../utils/validation');
+const { validateGHLPayload, truncateMessage } = require('../utils/validation');
 const { getClientByLocationId } = require('../services/supabase');
 const ghlAPI = require('../services/ghl');
 const evolutionAPI = require('../services/evolution');
@@ -60,19 +60,30 @@ async function handleGHLWebhook(req, res) {
     // Formatear número WhatsApp
     const waNumber = contactPhone.replace(/^\+/, '') + '@s.whatsapp.net';
 
+    // Truncar mensaje si es muy largo (GHL → WhatsApp)
+    const { text: finalText, truncated, originalLength } = truncateMessage(messageText);
+
+    if (truncated) {
+      logger.info('⚠️ Message truncated before sending to WhatsApp', {
+        originalLength,
+        truncatedLength: finalText.length,
+        locationId
+      });
+    }
+
     try {
       // Enviar mensaje a WhatsApp
       logger.info('Sending to Evolution API', {
         instanceName: client.instance_name,
         waNumber,
-        messageLength: messageText.length
+        messageLength: finalText.length
       });
 
       await evolutionAPI.sendText(
         client.instance_name,
         client.instance_apikey,
         waNumber,
-        messageText
+        finalText
       );
 
       logger.info('✅ Message sent to WhatsApp successfully', { locationId, waNumber });
