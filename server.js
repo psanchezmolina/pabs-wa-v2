@@ -10,7 +10,6 @@ const { handleGHLWebhook } = require('./webhooks/ghl');
 const { handleWhatsAppWebhook } = require('./webhooks/whatsapp');
 const { updateGHLTokens } = require('./services/supabase');
 const { createClient } = require('@supabase/supabase-js');
-const { sanitizeObject, sanitizeHeaders } = require('./utils/sanitizer');
 const { validateGHLWebhook, validateWhatsAppWebhook } = require('./utils/webhookAuth');
 
 const supabase = createClient(config.SUPABASE_URL, config.SUPABASE_KEY);
@@ -38,23 +37,6 @@ const oauthLimiter = rateLimit({
 
 app.use(express.json({ limit: '1mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
-
-// Log SOLO peticiones del número de debug
-app.use((req, res, next) => {
-  const debugNumber = '34660722687@s.whatsapp.net';
-  const isDebugNumber = req.body?.data?.key?.remoteJid === debugNumber;
-
-  if (isDebugNumber) {
-    console.log(`\n${'='.repeat(60)}`);
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
-    console.log(`Headers:`, sanitizeHeaders(req.headers));
-    if (req.body && Object.keys(req.body).length > 0) {
-      console.log(`Body:`, JSON.stringify(sanitizeObject(req.body), null, 2));
-    }
-    console.log('='.repeat(60));
-  }
-  next();
-});
 
 // Webhooks (con validación de whitelist)
 app.post('/webhook/ghl', validateGHLWebhook, handleGHLWebhook);
