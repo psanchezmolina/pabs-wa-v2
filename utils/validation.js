@@ -49,23 +49,49 @@ function validateWhatsAppPayload(body) {
   return { valid: true };
 }
 
-function truncateMessage(message, maxLength = 4096) {
+function splitMessage(message, maxLength = 3500) {
   if (!message || message.length <= maxLength) {
-    return { text: message, truncated: false };
+    return [message];
   }
 
-  const suffix = '\n\n⚠️ [Mensaje truncado - supera el límite de caracteres]';
-  const truncateAt = maxLength - suffix.length;
+  const parts = [];
+  let remaining = message;
+  let partNumber = 1;
 
-  return {
-    text: message.substring(0, truncateAt) + suffix,
-    truncated: true,
-    originalLength: message.length
-  };
+  while (remaining.length > 0) {
+    if (remaining.length <= maxLength) {
+      // Última parte
+      parts.push(remaining);
+      break;
+    }
+
+    // Buscar un buen punto de corte (espacio, salto de línea)
+    let cutPoint = maxLength;
+    const searchStart = Math.max(0, maxLength - 100); // Buscar en los últimos 100 chars
+
+    const lastNewline = remaining.lastIndexOf('\n', maxLength);
+    const lastSpace = remaining.lastIndexOf(' ', maxLength);
+
+    if (lastNewline >= searchStart) {
+      cutPoint = lastNewline;
+    } else if (lastSpace >= searchStart) {
+      cutPoint = lastSpace;
+    }
+
+    // Extraer parte y añadir marcador
+    const part = remaining.substring(0, cutPoint).trim();
+    const totalParts = Math.ceil(message.length / maxLength);
+    parts.push(`${part}\n\n📝 [Parte ${partNumber}/${totalParts}]`);
+
+    remaining = remaining.substring(cutPoint).trim();
+    partNumber++;
+  }
+
+  return parts;
 }
 
 module.exports = {
   validateGHLPayload,
   validateWhatsAppPayload,
-  truncateMessage
+  splitMessage
 };

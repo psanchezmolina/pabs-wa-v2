@@ -44,8 +44,12 @@ async function analyzeImage(base64Image) {
       max_tokens: 300
     })
   );
-  
-  return response.choices[0].message.content;
+
+  const description = response.choices[0].message.content;
+
+  // Sanitizar descripción: reemplazar comillas dobles por comillas simples
+  // Esto evita romper el JSON cuando se sube a GHL
+  return description.replace(/"/g, "'").replace(/\n/g, ' ').trim();
 }
 
 module.exports = {

@@ -1,5 +1,5 @@
 const { expect } = require('chai');
-const { validateGHLPayload, validateWhatsAppPayload, truncateMessage } = require('../../../utils/validation');
+const { validateGHLPayload, validateWhatsAppPayload, splitMessage } = require('../../../utils/validation');
 
 describe('Validation Utils', () => {
 
@@ -117,36 +117,46 @@ describe('Validation Utils', () => {
     });
   });
 
-  describe('truncateMessage', () => {
-    it('should not truncate short messages', () => {
+  describe('splitMessage', () => {
+    it('should not split short messages', () => {
       const message = 'Short message';
-      const result = truncateMessage(message);
+      const result = splitMessage(message);
 
-      expect(result.truncated).to.be.false;
-      expect(result.text).to.equal(message);
+      expect(result).to.be.an('array');
+      expect(result).to.have.length(1);
+      expect(result[0]).to.equal(message);
     });
 
-    it('should truncate messages longer than 4096 chars', () => {
+    it('should split messages longer than 3500 chars', () => {
       const longMessage = 'a'.repeat(5000);
-      const result = truncateMessage(longMessage);
+      const result = splitMessage(longMessage);
 
-      expect(result.truncated).to.be.true;
-      expect(result.originalLength).to.equal(5000);
-      expect(result.text.length).to.be.at.most(4096);
-      expect(result.text).to.include('[Mensaje truncado');
+      expect(result).to.be.an('array');
+      expect(result.length).to.be.greaterThan(1);
+      expect(result[0]).to.include('📝 [Parte 1/');
     });
 
     it('should handle custom max length', () => {
       const message = 'a'.repeat(200);
-      const result = truncateMessage(message, 100);
+      const result = splitMessage(message, 100);
 
-      expect(result.truncated).to.be.true;
-      expect(result.text.length).to.be.at.most(100);
+      expect(result).to.be.an('array');
+      expect(result.length).to.be.greaterThan(1);
+      expect(result[0].length).to.be.at.most(120); // Incluye marcador de parte
     });
 
     it('should handle null/undefined messages', () => {
-      expect(truncateMessage(null).truncated).to.be.false;
-      expect(truncateMessage(undefined).truncated).to.be.false;
+      expect(splitMessage(null)).to.deep.equal([null]);
+      expect(splitMessage(undefined)).to.deep.equal([undefined]);
+    });
+
+    it('should split at newlines when possible', () => {
+      const message = 'a'.repeat(3400) + '\n' + 'b'.repeat(100);
+      const result = splitMessage(message);
+
+      expect(result).to.be.an('array');
+      // Debería dividir en el salto de línea
+      expect(result[0]).to.not.include('b');
     });
   });
 });

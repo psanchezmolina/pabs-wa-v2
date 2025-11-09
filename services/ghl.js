@@ -127,13 +127,19 @@ async function searchContact(client, phone) {
 }
 
 async function createContact(client, name, phone) {
-  const response = await ghlRequest(client, 'POST', '/contacts/', {
+  const payload = {
     locationId: client.location_id,
-    name,
     phone,
     source: 'SMS'
-  });
-  
+  };
+
+  // Solo incluir name si existe y no está vacío
+  if (name && name.trim() !== '') {
+    payload.name = name.trim();
+  }
+
+  const response = await ghlRequest(client, 'POST', '/contacts/', payload);
+
   return response.data.contact;
 }
 

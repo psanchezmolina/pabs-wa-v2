@@ -1,6 +1,6 @@
 const logger = require('../utils/logger');
 const { notifyAdmin } = require('../utils/notifications');
-const { validateWhatsAppPayload, truncateMessage } = require('../utils/validation');
+const { validateWhatsAppPayload, splitMessage } = require('../utils/validation');
 const { getClientByInstanceName } = require('../services/supabase');
 const ghlAPI = require('../services/ghl');
 const evolutionAPI = require('../services/evolution');
@@ -165,14 +165,14 @@ async function handleWhatsAppWebhook(req, res) {
     } else if (messageData.message.videoMessage) {
       contentType = 'video';
       const caption = messageData.message.videoMessage.caption || '';
-      messageText = `🎥 [video]${caption ? ' - ' + caption : ''}`;
+      messageText = `🎥 [video]${caption ? ' - ' + caption : ''} - Ver más en WhatsApp`;
       log.info('🎥 Video message detected', { hasCaption: !!caption });
 
     } else if (messageData.message.documentMessage) {
       contentType = 'document';
       const fileName = messageData.message.documentMessage.fileName || 'documento';
       const caption = messageData.message.documentMessage.caption || '';
-      messageText = `📎 [${fileName}]${caption ? ' - ' + caption : ''}`;
+      messageText = `📎 [${fileName}]${caption ? ' - ' + caption : ''} - Ver más en WhatsApp`;
       log.info('📎 Document message detected', { fileName, hasCaption: !!caption });
 
     } else if (messageData.message.locationMessage) {
@@ -180,13 +180,13 @@ async function handleWhatsAppWebhook(req, res) {
       const lat = messageData.message.locationMessage.degreesLatitude;
       const lng = messageData.message.locationMessage.degreesLongitude;
       const name = messageData.message.locationMessage.name || '';
-      messageText = `📍 [ubicación]${name ? ': ' + name : ''}${lat && lng ? ` (${lat}, ${lng})` : ''}`;
+      messageText = `📍 [ubicación]${name ? ': ' + name : ''}${lat && lng ? ` (${lat}, ${lng})` : ''} - Ver más en WhatsApp`;
       log.info('📍 Location message detected', { lat, lng, name });
 
     } else if (messageData.message.contactMessage) {
       contentType = 'contact';
       const displayName = messageData.message.contactMessage.displayName || 'contacto';
-      messageText = `👤 [contacto: ${displayName}]`;
+      messageText = `👤 [contacto: ${displayName}] - Ver más en WhatsApp`;
       log.info('👤 Contact message detected', { displayName });
 
     } else if (messageData.message.stickerMessage) {
@@ -262,37 +262,46 @@ async function handleWhatsAppWebhook(req, res) {
     // Calcular direction basándose en fromMe
     const direction = messageData.key.fromMe ? 'outbound' : 'inbound';
 
-    // Truncar mensaje si es muy largo (WhatsApp → GHL)
-    const { text: finalText, truncated, originalLength } = truncateMessage(messageText);
+    // Dividir mensaje si es muy largo (WhatsApp → GHL)
+    const messageParts = splitMessage(messageText);
 
-    if (truncated) {
-      log.info('⚠️ Message truncated before uploading to GHL', {
-        originalLength,
-        truncatedLength: finalText.length,
+    if (messageParts.length > 1) {
+      log.info('📝 Message split into multiple parts', {
+        totalParts: messageParts.length,
+        originalLength: messageText.length,
         contactId
       });
     }
 
-    // Registrar mensaje en GHL
+    // Registrar mensaje(s) en GHL
     log.info('🔍 Step 6: Registering message in GHL...', {
       conversationId,
       contactId,
       direction,
-      messagePreview: finalText.substring(0, 100)
+      parts: messageParts.length,
+      messagePreview: messageParts[0].substring(0, 100)
     });
 
-    await ghlAPI.registerMessage(
-      client,
-      conversationId,
-      contactId,
-      finalText,
-      direction
-    );
+    // Enviar cada parte como mensaje separado
+    for (let i = 0; i < messageParts.length; i++) {
+      await ghlAPI.registerMessage(
+        client,
+        conversationId,
+        contactId,
+        messageParts[i],
+        direction
+      );
+
+      if (messageParts.length > 1) {
+        log.info(`✅ Registered part ${i + 1}/${messageParts.length}`);
+      }
+    }
 
     log.info('✅ Step 6 COMPLETE: Message registered in GHL successfully!', {
       conversationId,
       contactId,
-      direction
+      direction,
+      totalParts: messageParts.length
     });
     
     return res.status(200).json({ success: true });

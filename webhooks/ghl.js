@@ -1,6 +1,6 @@
 const logger = require('../utils/logger');
 const { notifyAdmin } = require('../utils/notifications');
-const { validateGHLPayload, truncateMessage } = require('../utils/validation');
+const { validateGHLPayload, splitMessage } = require('../utils/validation');
 const { getClientByLocationId } = require('../services/supabase');
 const ghlAPI = require('../services/ghl');
 const evolutionAPI = require('../services/evolution');
@@ -60,33 +60,50 @@ async function handleGHLWebhook(req, res) {
     // Formatear número WhatsApp
     const waNumber = contactPhone.replace(/^\+/, '') + '@s.whatsapp.net';
 
-    // Truncar mensaje si es muy largo (GHL → WhatsApp)
-    const { text: finalText, truncated, originalLength } = truncateMessage(messageText);
+    // Dividir mensaje si es muy largo (GHL → WhatsApp)
+    const messageParts = splitMessage(messageText);
 
-    if (truncated) {
-      logger.info('⚠️ Message truncated before sending to WhatsApp', {
-        originalLength,
-        truncatedLength: finalText.length,
+    if (messageParts.length > 1) {
+      logger.info('📝 Message split into multiple parts', {
+        totalParts: messageParts.length,
+        originalLength: messageText.length,
         locationId
       });
     }
 
     try {
-      // Enviar mensaje a WhatsApp
+      // Enviar mensaje(s) a WhatsApp
       logger.info('Sending to Evolution API', {
         instanceName: client.instance_name,
         waNumber,
-        messageLength: finalText.length
+        parts: messageParts.length,
+        messageLength: messageText.length
       });
 
-      await evolutionAPI.sendText(
-        client.instance_name,
-        client.instance_apikey,
-        waNumber,
-        finalText
-      );
+      // Enviar cada parte como mensaje separado
+      for (let i = 0; i < messageParts.length; i++) {
+        await evolutionAPI.sendText(
+          client.instance_name,
+          client.instance_apikey,
+          waNumber,
+          messageParts[i]
+        );
 
-      logger.info('✅ Message sent to WhatsApp successfully', { locationId, waNumber });
+        if (messageParts.length > 1) {
+          logger.info(`✅ Sent part ${i + 1}/${messageParts.length}`);
+
+          // Pequeño delay entre mensajes (500ms) para mantener el orden
+          if (i < messageParts.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
+        }
+      }
+
+      logger.info('✅ Message sent to WhatsApp successfully', {
+        locationId,
+        waNumber,
+        totalParts: messageParts.length
+      });
 
       // Intentar marcar como entregado en GHL (no crítico si falla)
       try {
