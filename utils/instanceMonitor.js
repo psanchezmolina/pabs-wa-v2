@@ -179,7 +179,11 @@ async function checkAllInstances() {
     await notifyAdmin('Error en Instance Monitor', {
       error: error.message,
       stack: error.stack,
-      endpoint: 'Instance Monitor'
+      endpoint: 'Instance Monitor',
+      // Datos de API si es error de axios
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      responseData: error.response?.data
     });
   }
 }

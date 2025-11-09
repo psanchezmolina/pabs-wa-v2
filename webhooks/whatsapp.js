@@ -119,7 +119,11 @@ async function handleWhatsAppWebhook(req, res) {
           endpoint: '/webhook/whatsapp',
           instance_name: client.instance_name,
           messageId,
-          remoteJid: messageData.key.remoteJid
+          remoteJid: messageData.key.remoteJid,
+          // Datos de API si es error de axios
+          status: audioError.response?.status,
+          statusText: audioError.response?.statusText,
+          responseData: audioError.response?.data
         });
       }
 
@@ -160,7 +164,11 @@ async function handleWhatsAppWebhook(req, res) {
           endpoint: '/webhook/whatsapp',
           instance_name: client.instance_name,
           messageId,
-          remoteJid: messageData.key.remoteJid
+          remoteJid: messageData.key.remoteJid,
+          // Datos de API si es error de axios
+          status: imageError.response?.status,
+          statusText: imageError.response?.statusText,
+          responseData: imageError.response?.data
         });
       }
 
@@ -343,7 +351,12 @@ async function handleWhatsAppWebhook(req, res) {
       stack: error.stack,
       endpoint: '/webhook/whatsapp',
       remoteJid: req.body?.data?.key?.remoteJid,
-      messageId: req.body?.data?.key?.id
+      messageId: req.body?.data?.key?.id,
+      // Datos de API si es error de axios
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      responseData: error.response?.data,
+      data: error.config?.data ? JSON.parse(error.config.data) : undefined
     });
 
     // IMPORTANTE: Siempre devolver 200 para evitar que Evolution API reintente

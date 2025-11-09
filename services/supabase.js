@@ -4,6 +4,22 @@ const logger = require('../utils/logger');
 
 const supabase = createClient(config.SUPABASE_URL, config.SUPABASE_KEY);
 
+// Helper: Limpiar campos de texto (eliminar \r\n y espacios)
+function cleanClient(client) {
+  if (!client) return client;
+
+  return {
+    ...client,
+    location_id: client.location_id?.trim(),
+    instance_name: client.instance_name?.trim(),
+    instance_apikey: client.instance_apikey?.trim(),
+    instance_sender: client.instance_sender?.trim(),
+    conversation_provider_id: client.conversation_provider_id?.trim(),
+    ghl_access_token: client.ghl_access_token?.trim(),
+    ghl_refresh_token: client.ghl_refresh_token?.trim()
+  };
+}
+
 async function getClientByLocationId(locationId) {
   // Primero intentar sin .single() para ver cuántos registros hay
   const { data: allData, error: queryError } = await supabase
@@ -33,8 +49,8 @@ async function getClientByLocationId(locationId) {
     });
   }
 
-  // Retornar el primero
-  return allData[0];
+  // Retornar el primero (limpiado)
+  return cleanClient(allData[0]);
 }
 
 async function getClientByInstanceName(instanceName) {
@@ -66,8 +82,8 @@ async function getClientByInstanceName(instanceName) {
     });
   }
 
-  // Retornar el primero
-  return allData[0];
+  // Retornar el primero (limpiado)
+  return cleanClient(allData[0]);
 }
 
 async function updateGHLTokens(locationId, accessToken, refreshToken, expiresIn) {

@@ -127,7 +127,7 @@ app.get('/oauth/ghl/connect', oauthLimiter, (req, res) => {
     `&state=${location_id}`;
 
   res.redirect(authUrl);
-E});
+});
 
 // OAuth: Callback
 app.get('/auth/credentials2/callback', oauthLimiter, async (req, res) => {
@@ -256,7 +256,11 @@ app.use((err, req, res, next) => {
     stack: err.stack,
     endpoint: `${req.method} ${req.url}`,
     location_id: req.body?.locationId,
-    instance_name: req.body?.instance
+    instance_name: req.body?.instance,
+    // Datos de API si es error de axios
+    status: err.response?.status,
+    statusText: err.response?.statusText,
+    responseData: err.response?.data
   });
 
   // Responder al cliente
@@ -276,7 +280,11 @@ process.on('uncaughtException', (err) => {
   notifyAdmin('Uncaught Exception', {
     error: err.message,
     stack: err.stack,
-    endpoint: 'Node.js Process'
+    endpoint: 'Node.js Process',
+    // Datos de API si es error de axios
+    status: err.response?.status,
+    statusText: err.response?.statusText,
+    responseData: err.response?.data
   });
 });
 
@@ -289,7 +297,11 @@ process.on('unhandledRejection', (reason, promise) => {
   notifyAdmin('Unhandled Rejection', {
     error: reason?.message || String(reason),
     stack: reason?.stack,
-    endpoint: 'Node.js Promise'
+    endpoint: 'Node.js Promise',
+    // Datos de API si es error de axios
+    status: reason?.response?.status,
+    statusText: reason?.response?.statusText,
+    responseData: reason?.response?.data
   });
 });
 

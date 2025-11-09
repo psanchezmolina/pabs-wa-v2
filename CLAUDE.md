@@ -229,7 +229,12 @@ N8N_AUTH_HEADER=Bearer xxx
 - Errores repetidos → Agrupados automáticamente
 - Envío resumen después de 5 min o al reconectar
 
-**Formato:** Estilo n8n con stack trace, contexto, timestamp (DD/MM/AAAA)
+**Formato mejorado incluye:**
+- 📁 Archivo:línea del error (extraído del stack trace)
+- 🌐 API Response completa (status + mensaje + payload)
+- 📤 Payload enviado a la API (sanitizado, hasta 400 chars)
+- 💡 Quick Fix Suggestions contextuales según tipo de error
+- Stack trace completo
 
 **Triggers:** Token refresh failed, webhook errors, OpenAI failures, instancias desconectadas
 
@@ -304,6 +309,8 @@ const client = await getClientByLocationId(locationId);
 const client = await getClientByInstanceName(instanceName);
 ```
 
+**Nota:** Todos los clientes se limpian automáticamente con `.trim()` en campos críticos (`conversation_provider_id`, `instance_apikey`, etc.) para prevenir errores por espacios/saltos de línea (`\r\n`).
+
 ### Using cache
 
 ```javascript
@@ -371,6 +378,10 @@ const description = await openaiAPI.analyzeImage(media.base64);
   - Row Level Security activado en `clients_details`
   - Usa política "Allow authenticated access" (funciona con anon key)
   - No requiere service_role key
+- **Limpieza automática de campos de BD:**
+  - Todos los campos críticos (`conversation_provider_id`, `instance_apikey`, etc.) se limpian con `.trim()` al leer de BD
+  - Previene errores por espacios en blanco o saltos de línea (`\r\n`) ocultos
+  - **Recomendación:** Limpiar BD manualmente: `UPDATE clients_details SET conversation_provider_id = TRIM(conversation_provider_id)`
 - **Números de teléfono - Formato E.164:**
   - GHL usa formato **E.164 estándar**: `+34660722687` (único formato oficial soportado)
   - WhatsApp envía: `34660722687@s.whatsapp.net`

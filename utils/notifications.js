@@ -117,6 +117,62 @@ function formatStack(stack) {
   return lines.map(line => line.trim()).join('\n');
 }
 
+// Extraer archivo:línea del primer error del stack
+function extractFileLocation(stack) {
+  if (!stack) return null;
+
+  const match = stack.match(/at .*\(?(\/usr\/src\/app\/[^:]+):(\d+):\d+\)?/);
+  if (match) {
+    const fullPath = match[1];
+    const file = fullPath.replace('/usr/src/app/', '');
+    const line = match[2];
+    return `${file}:${line}`;
+  }
+  return null;
+}
+
+// Generar sugerencias basadas en el tipo de error
+function getQuickFixSuggestions(errorType, details) {
+  const suggestions = [];
+
+  // Errores de API GHL
+  if (details.status === 400 || details.responseData?.statusCode === 400) {
+    suggestions.push('Revisar formato de datos en BD (trim, espacios, \\r\\n)');
+    suggestions.push('Verificar que conversation_provider_id sea válido');
+    suggestions.push('Validar formato de teléfono (E.164: +34XXX)');
+  }
+
+  if (details.status === 403 || details.responseData?.statusCode === 403) {
+    suggestions.push('Verificar conversation_provider_id en BD');
+    suggestions.push('Revisar permisos OAuth del location');
+  }
+
+  if (details.status === 401 || errorType.includes('Token')) {
+    suggestions.push('Token expirado - verificar ghl_token_expiry en BD');
+    suggestions.push('Ejecutar refresh token manualmente');
+  }
+
+  // Errores de referencia (código)
+  if (errorType.includes('ReferenceError') || details.error?.includes('is not defined')) {
+    suggestions.push('Error de tipeo en código (variable, función, import)');
+    suggestions.push('Revisar el archivo mencionado en el stack trace');
+  }
+
+  // Errores de OpenAI
+  if (errorType.includes('OpenAI')) {
+    suggestions.push('Verificar OPENAI_API_KEY en variables de entorno');
+    suggestions.push('Check OpenAI API status: https://status.openai.com');
+  }
+
+  // Errores de Evolution API
+  if (errorType.includes('WhatsApp') || details.instance_name) {
+    suggestions.push('Verificar que la instancia esté conectada');
+    suggestions.push('Revisar instance_apikey en BD');
+  }
+
+  return suggestions;
+}
+
 function formatSingleError(errorType, details) {
   const client = details.location_id || details.instance_name || 'N/A';
   const endpoint = details.endpoint || details.webhook || 'N/A';
@@ -125,7 +181,44 @@ function formatSingleError(errorType, details) {
   message += `*Tipo:* ${errorType}\n`;
   message += `*Cliente:* ${client}\n`;
   message += `*Endpoint:* ${endpoint}\n`;
-  message += `*Error:* ${details.error}\n\n`;
+  message += `*Error:* ${details.error}\n`;
+
+  // Extraer ubicación del archivo
+  const fileLocation = extractFileLocation(details.stack);
+  if (fileLocation) {
+    message += `*📁 Archivo:* ${fileLocation}\n`;
+  }
+  message += `\n`;
+
+  // Información de API externa (GHL, Evolution, OpenAI)
+  if (details.status || details.errorCode || details.responseData) {
+    message += `*🌐 API Response:*\n`;
+    if (details.status || details.errorCode) {
+      message += `• Status: ${details.status || details.errorCode}\n`;
+    }
+    if (details.statusText) {
+      message += `• Status Text: ${details.statusText}\n`;
+    }
+    if (details.responseData) {
+      const responseStr = typeof details.responseData === 'string'
+        ? details.responseData
+        : JSON.stringify(details.responseData, null, 2);
+      message += `• Response: ${responseStr.substring(0, 300)}\n`;
+    }
+    if (details.errorData) {
+      message += `• Error Data: ${details.errorData.substring(0, 300)}\n`;
+    }
+    message += `\n`;
+  }
+
+  // Payload enviado (útil para errores 400)
+  if (details.data || details.payload) {
+    const payload = details.data || details.payload;
+    const payloadStr = typeof payload === 'string'
+      ? payload
+      : JSON.stringify(payload, null, 2);
+    message += `*📤 Payload Enviado:*\n\`\`\`\n${payloadStr.substring(0, 400)}\n\`\`\`\n\n`;
+  }
 
   // Contexto adicional
   if (details.contactId || details.messageId || details.remoteJid || details.phone) {
@@ -137,7 +230,15 @@ function formatSingleError(errorType, details) {
     message += `\n`;
   }
 
-  // Stack trace
+  // Sugerencias de solución
+  const suggestions = getQuickFixSuggestions(errorType, details);
+  if (suggestions.length > 0) {
+    message += `*💡 Quick Fix Suggestions:*\n`;
+    suggestions.forEach(s => message += `• ${s}\n`);
+    message += `\n`;
+  }
+
+  // Stack trace (reducido ahora que tenemos más info)
   if (details.stack) {
     message += `*Stack:*\n\`\`\`\n${formatStack(details.stack)}\n\`\`\`\n\n`;
   }
@@ -159,9 +260,16 @@ function formatAggregatedError(errorType, aggregated) {
     clientCounts[client] = (clientCounts[client] || 0) + 1;
   });
 
+  const lastDetail = aggregated.details[aggregated.details.length - 1];
+  const fileLocation = extractFileLocation(lastDetail.stack);
+
   let message = `🚨 *Error Agrupado* (x${count}) 🚨\n\n`;
   message += `*Tipo:* ${errorType}\n`;
-  message += `*Mensaje:* ${aggregated.details[0].error}\n\n`;
+  message += `*Mensaje:* ${aggregated.details[0].error}\n`;
+  if (fileLocation) {
+    message += `*📁 Archivo:* ${fileLocation}\n`;
+  }
+  message += `\n`;
 
   message += `*Estadísticas:*\n`;
   message += `• Ocurrencias: ${count}\n`;
@@ -173,11 +281,19 @@ function formatAggregatedError(errorType, aggregated) {
   for (const [client, clientCount] of Object.entries(clientCounts)) {
     message += `- ${client} (${clientCount}x)\n`;
   }
+  message += `\n`;
+
+  // Sugerencias de solución (basadas en el último error)
+  const suggestions = getQuickFixSuggestions(errorType, lastDetail);
+  if (suggestions.length > 0) {
+    message += `*💡 Quick Fix Suggestions:*\n`;
+    suggestions.forEach(s => message += `• ${s}\n`);
+    message += `\n`;
+  }
 
   // Stack del último error
-  const lastDetail = aggregated.details[aggregated.details.length - 1];
   if (lastDetail.stack) {
-    message += `\n*Último stack:*\n\`\`\`\n${formatStack(lastDetail.stack)}\n\`\`\``;
+    message += `*Último stack:*\n\`\`\`\n${formatStack(lastDetail.stack)}\n\`\`\``;
   }
 
   return message;

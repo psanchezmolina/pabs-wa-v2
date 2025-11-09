@@ -191,7 +191,11 @@ async function handleGHLWebhook(req, res) {
         endpoint: '/webhook/ghl',
         contactId,
         messageId,
-        phone: contactPhone
+        phone: contactPhone,
+        // Datos de API si es error de axios
+        status: sendError.response?.status,
+        statusText: sendError.response?.statusText,
+        responseData: sendError.response?.data
       });
 
       return res.status(500).json({ error: 'Failed to send message' });
@@ -206,7 +210,12 @@ async function handleGHLWebhook(req, res) {
       stack: error.stack,
       endpoint: '/webhook/ghl',
       contactId: req.body?.contactId,
-      messageId: req.body?.messageId
+      messageId: req.body?.messageId,
+      // Datos de API si es error de axios
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      responseData: error.response?.data,
+      data: error.config?.data ? JSON.parse(error.config.data) : undefined
     });
 
     return res.status(500).json({ error: 'Internal server error' });
