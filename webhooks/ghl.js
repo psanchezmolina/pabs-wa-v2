@@ -182,8 +182,20 @@ async function handleGHLWebhook(req, res) {
             error: tagError.message
           });
         }
+
+        // Caso normal de contacto sin WhatsApp - NO notificar al admin
+        logger.info('✅ Contact without WhatsApp handled successfully', {
+          contactId,
+          phone: contactPhone
+        });
+
+        return res.status(200).json({
+          success: true,
+          message: 'Contact does not have WhatsApp - registered in GHL and tagged'
+        });
       }
 
+      // Si NO es un caso de "sin WhatsApp", entonces SÍ notificar al admin
       await notifyAdmin('Failed to send WhatsApp message', {
         location_id: locationId,
         error: sendError.message,

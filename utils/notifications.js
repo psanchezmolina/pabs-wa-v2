@@ -174,7 +174,7 @@ function getQuickFixSuggestions(errorType, details) {
 }
 
 function formatSingleError(errorType, details) {
-  const client = details.location_id || details.instance_name || 'N/A';
+  const client = `${details.location_id} (${details.instance_name})`;
   const endpoint = details.endpoint || details.webhook || 'N/A';
 
   let message = `🚨 *Error en Servidor* 🚨\n\n`;
