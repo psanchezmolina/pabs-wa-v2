@@ -16,7 +16,9 @@ function cleanClient(client) {
     instance_sender: client.instance_sender?.trim(),
     conversation_provider_id: client.conversation_provider_id?.trim(),
     ghl_access_token: client.ghl_access_token?.trim(),
-    ghl_refresh_token: client.ghl_refresh_token?.trim()
+    ghl_refresh_token: client.ghl_refresh_token?.trim(),
+    // is_beta es booleano, no necesita limpieza - se preserva automáticamente
+    is_beta: client.is_beta ?? false // Fallback a false si no existe
   };
 }
 

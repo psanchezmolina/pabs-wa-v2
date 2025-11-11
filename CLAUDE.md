@@ -22,7 +22,7 @@
 - **Database:** Supabase (PostgreSQL) - tabla `clients_details`
 - **HTTP Client:** Axios + axios-retry (4 reintentos, 800ms de retraso)
 - **Logging:** Winston (logs JSON estructurados)
-- **Testing:** Mocha + Chai + Supertest + Nock (27 tests unitarios, 4 integración)
+- **Testing:** Mocha + Chai + Supertest + Nock (53 tests unitarios passing, 4 pending integración)
 - **Deploy:** Docker en Easypanel/Contabo VPS
 
 ### External APIs
@@ -55,6 +55,7 @@
 │   ├── validation.js     # Payload validation + truncamiento
 │   ├── sanitizer.js      # Redactar datos sensibles en logs
 │   ├── webhookAuth.js    # Validación whitelist de webhooks
+│   ├── betaFeatures.js   # Beta feature flags helpers
 │   └── instanceMonitor.js # Monitor instancias (cada 4h)
 ├── public/                 # QR panel (DO NOT MODIFY)
 └── test/                   # Tests unitarios e integración
@@ -129,6 +130,7 @@ N8N_AUTH_HEADER=Bearer xxx
 - `ghl_access_token` (TEXT) - Token de acceso OAuth
 - `ghl_refresh_token` (TEXT) - Token de refresco OAuth
 - `ghl_token_expiry` (TIMESTAMPTZ) - Expiración del token
+- `is_beta` (BOOLEAN, DEFAULT false) - Flag para clientes en programa beta
 
 **Columnas ignoradas:** `openai_apikey`, `is_active`, `webhook_secret`
 
@@ -138,6 +140,59 @@ N8N_AUTH_HEADER=Bearer xxx
 - RLS (Row Level Security) activado
 - Política: "Allow authenticated access" permite acceso con anon key
 - No requiere service_role key
+
+---
+
+## Beta Features
+
+Sistema de feature flags simple para testear nuevas funcionalidades con clientes específicos.
+
+### Configuración
+
+**Base de datos:**
+```sql
+-- Activar cliente para beta
+UPDATE clients_details SET is_beta = true WHERE location_id = 'XXX';
+
+-- Desactivar
+UPDATE clients_details SET is_beta = false WHERE location_id = 'XXX';
+
+-- Ver clientes beta
+SELECT location_id, instance_name, is_beta FROM clients_details WHERE is_beta = true;
+```
+
+### Uso en Código
+
+**Helpers disponibles en `utils/betaFeatures.js`:**
+
+```javascript
+const { isBetaClient, executeBetaAware, logBetaUsage } = require('../utils/betaFeatures');
+
+// 1. Chequeo simple
+if (isBetaClient(client)) {
+  // Ejecutar lógica beta
+}
+
+// 2. Ejecución condicional
+const result = await executeBetaAware(
+  client,
+  async () => {/* lógica beta */},
+  async () => {/* lógica producción */}
+);
+
+// 3. Logging de uso beta
+logBetaUsage(client, 'feature-name', { metadata: 'value' });
+```
+
+### Workflow
+
+1. **Desarrollo:** Implementar feature con chequeo `isBetaClient()`
+2. **Testing:** Activar `is_beta=true` para 1-2 clientes de prueba
+3. **Validación:** Monitorear logs y notificaciones durante varios días
+4. **Rollout:** Si es exitoso, remover chequeo beta y desplegar para todos
+5. **Cleanup:** Actualizar CLAUDE.md si es necesario
+
+**Importante:** Beta flags son para features **completas y funcionales**, no para código experimental o roto.
 
 ---
 
@@ -405,6 +460,18 @@ const description = await openaiAPI.analyzeImage(media.base64);
 4. **Revisar salud:** `curl http://localhost:3000/health`
 5. **Monitorear uso:** Vigilar logs de Winston en busca de errores
 
+### Development Process (Cambios de Código)
+
+Cuando implementes nuevas funcionalidades o fixes, sigue este proceso:
+
+1. **Implementar código** - Hacer los cambios necesarios
+2. **Ejecutar tests** - `npm test` para verificar no hay regresiones
+3. **Verificar logs** - Revisar que no haya warnings o errors inesperados
+4. **Actualizar CLAUDE.md** - Documentar cambios importantes, remover info obsoleta (ser conciso)
+5. **Probar manualmente** - Si es feature nueva, probar con cliente beta primero
+
+**Importante:** Tests y documentación son parte del proceso, no opcionales.
+
 ### Production Deployment (Easypanel/Contabo VPS)
 
 **Infraestructura actual:**
@@ -434,7 +501,7 @@ const description = await openaiAPI.analyzeImage(media.base64);
 
 ## Testing
 
-**Estado:** 40+ tests unitarios implementados y funcionando
+**Estado:** 53 tests unitarios passing, 4 pending (integración)
 
 ### Ejecutar Tests
 
