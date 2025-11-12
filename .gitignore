@@ -6,6 +6,9 @@ node_modules/
 .env.local
 .env.*.local
 
+#Claude Local Files
+.claude
+
 # Logs
 logs/
 *.log
