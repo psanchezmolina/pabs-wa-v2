@@ -151,13 +151,13 @@ async function checkAllInstances() {
       });
     }
 
-    // Notificar reconexiones (buenas noticias)
+    // Notificar conexiones (buenas noticias)
     if (reconnected.length > 0) {
-      await notifyAdmin('Instancias WhatsApp Reconectadas', {
-        error: `${reconnected.length} instancia(s) reconectada(s)`,
+      await notifyAdmin('Instancias WhatsApp Conectadas', {
+        error: `${reconnected.length} instancia(s) conectada(s)`,
         endpoint: 'Instance Monitor',
         instance_name: reconnected.map(r => r.instanceName).join(', '),
-        details: formatReconnectedAlert(reconnected)
+        details: formatConnectedAlert(reconnected)
       });
     }
 
@@ -189,29 +189,60 @@ async function checkAllInstances() {
 }
 
 function formatDisconnectedAlert(disconnected) {
-  let message = '⚠️ *Instancias Desconectadas* ⚠️\n\n';
+  const timestamp = new Date().toLocaleString('es-ES', { timeZone: 'Europe/Madrid' });
+  let message = '🔴 *ALERTA: Instancias WhatsApp Desconectadas*\n\n';
+  message += `⏰ Detectado: ${timestamp}\n`;
+  message += `📊 Total afectadas: ${disconnected.length} instancia(s)\n\n`;
+  message += '━━━━━━━━━━━━━━━━━━━\n\n';
 
-  disconnected.forEach(inst => {
-    message += `*${inst.instanceName}*\n`;
-    message += `Estado: ${inst.state}\n`;
-    message += `Clientes afectados: ${inst.locationIds.length}\n`;
+  disconnected.forEach((inst, index) => {
+    message += `${index + 1}. *${inst.instanceName}*\n`;
+    message += `   └ Estado: \`${inst.state}\`\n`;
+    message += `   └ Clientes afectados: *${inst.locationIds.length}*\n`;
+
+    if (inst.locationIds.length <= 3) {
+      message += `   └ Location IDs: ${inst.locationIds.map(id => `\`${id.substring(0, 8)}...\``).join(', ')}\n`;
+    } else {
+      message += `   └ Location IDs: ${inst.locationIds.slice(0, 2).map(id => `\`${id.substring(0, 8)}...\``).join(', ')} y ${inst.locationIds.length - 2} más\n`;
+    }
+
     if (inst.error) {
-      message += `Error: ${inst.error}\n`;
+      message += `   └ ⚠️ Error: ${inst.error}\n`;
     }
     message += '\n';
   });
 
+  message += '━━━━━━━━━━━━━━━━━━━\n';
+  message += '💡 *Acciones sugeridas:*\n';
+  message += '   • Verificar conexión de WhatsApp\n';
+  message += '   • Escanear QR si es necesario\n';
+  message += '   • Revisar logs de Evolution API\n';
+
   return message;
 }
 
-function formatReconnectedAlert(reconnected) {
-  let message = '✅ *Instancias Reconectadas* ✅\n\n';
+function formatConnectedAlert(connected) {
+  const timestamp = new Date().toLocaleString('es-ES', { timeZone: 'Europe/Madrid' });
+  let message = '🟢 *Instancias WhatsApp Conectadas*\n\n';
+  message += `⏰ Detectado: ${timestamp}\n`;
+  message += `📊 Total conectadas: ${connected.length} instancia(s)\n\n`;
+  message += '━━━━━━━━━━━━━━━━━━━\n\n';
 
-  reconnected.forEach(inst => {
-    message += `*${inst.instanceName}*\n`;
-    message += `Estado: ${inst.state}\n`;
-    message += `Clientes: ${inst.locationIds.length}\n\n`;
+  connected.forEach((inst, index) => {
+    message += `${index + 1}. ✅ *${inst.instanceName}*\n`;
+    message += `   └ Estado: \`${inst.state}\` (operativa)\n`;
+    message += `   └ Clientes activos: *${inst.locationIds.length}*\n`;
+
+    if (inst.locationIds.length <= 3) {
+      message += `   └ Location IDs: ${inst.locationIds.map(id => `\`${id.substring(0, 8)}...\``).join(', ')}\n`;
+    } else {
+      message += `   └ Location IDs: ${inst.locationIds.slice(0, 2).map(id => `\`${id.substring(0, 8)}...\``).join(', ')} y ${inst.locationIds.length - 2} más\n`;
+    }
+    message += '\n';
   });
+
+  message += '━━━━━━━━━━━━━━━━━━━\n';
+  message += '✨ Los mensajes se están procesando con normalidad\n';
 
   return message;
 }
@@ -220,8 +251,10 @@ function formatReconnectedAlert(reconnected) {
 // SCHEDULER - Ejecutar cada X horas
 // ============================================================================
 
-function startMonitoring(intervalHours = 4) {
-  logger.info(`🔄 Instance monitor started (interval: ${intervalHours}h)`);
+function startMonitoring(intervalHours = 0.5) {
+  const intervalMinutes = intervalHours * 60;
+  const displayInterval = intervalHours >= 1 ? `${intervalHours}h` : `${intervalMinutes}min`;
+  logger.info(`🔄 Instance monitor started (interval: ${displayInterval})`);
 
   // Ejecutar inmediatamente al iniciar
   checkAllInstances();

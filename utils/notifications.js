@@ -1,5 +1,6 @@
 const config = require('../config');
 const logger = require('./logger');
+const { sendEmail, formatErrorEmailHtml, isEmailConfigured } = require('./email');
 
 // ============================================================================
 // ERROR AGGREGATOR - Agrupa errores idénticos en ventana de 5 minutos
@@ -304,29 +305,22 @@ function formatAggregatedError(errorType, aggregated) {
 // ============================================================================
 
 async function sendToWhatsApp(message) {
-  try {
-    const evolutionAPI = require('../services/evolution');
+  const evolutionAPI = require('../services/evolution');
 
-    // Verificar configuración
-    if (!config.ADMIN_INSTANCE_APIKEY) {
-      logger.warn('ADMIN_INSTANCE_APIKEY not configured, cannot send notification');
-      return;
-    }
-
-    await evolutionAPI.sendText(
-      config.ADMIN_INSTANCE,
-      config.ADMIN_INSTANCE_APIKEY,
-      config.ADMIN_WHATSAPP,
-      message
-    );
-
-    logger.info('Admin notified successfully');
-  } catch (error) {
-    logger.error('Failed to notify admin', {
-      error: error.message,
-      stack: error.stack
-    });
+  // Verificar configuración
+  if (!config.ADMIN_INSTANCE_APIKEY) {
+    logger.warn('ADMIN_INSTANCE_APIKEY not configured, cannot send notification');
+    throw new Error('ADMIN_INSTANCE_APIKEY not configured');
   }
+
+  await evolutionAPI.sendText(
+    config.ADMIN_INSTANCE,
+    config.ADMIN_INSTANCE_APIKEY,
+    config.ADMIN_WHATSAPP,
+    message
+  );
+
+  logger.info('Admin notified successfully via WhatsApp');
 }
 
 // ============================================================================
@@ -346,7 +340,38 @@ async function notifyAdmin(errorType, details) {
         ? formatAggregatedError(type, data)
         : formatSingleError(type, data);
 
-      await sendToWhatsApp(message);
+      try {
+        // 1. Intentar WhatsApp primero
+        await sendToWhatsApp(message);
+
+      } catch (whatsappError) {
+        // 2. WhatsApp falló, usar Email como fallback
+        logger.warn('WhatsApp notification failed, trying email fallback', {
+          whatsappError: whatsappError.message
+        });
+
+        if (!isEmailConfigured()) {
+          logger.error('CRITICAL: Email fallback not configured, notification lost', {
+            errorType: type,
+            whatsappError: whatsappError.message
+          });
+          return;
+        }
+
+        try {
+          const htmlContent = formatErrorEmailHtml(type, isAggregated ? data.details[data.details.length - 1] : data);
+          await sendEmail(type, htmlContent);
+          logger.info('Notification sent via email (fallback successful)');
+
+        } catch (emailError) {
+          // 3. Ambos fallaron - CRÍTICO
+          logger.error('CRITICAL: Both WhatsApp and Email notifications failed', {
+            errorType: type,
+            whatsappError: whatsappError.message,
+            emailError: emailError.message
+          });
+        }
+      }
     });
 
   } catch (error) {

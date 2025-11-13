@@ -343,9 +343,9 @@ function gracefulShutdown(signal) {
 server = app.listen(PORT, () => {
   logger.info(`Server running on port ${PORT}`);
 
-  // Iniciar monitor de instancias (cada 4 horas)
+  // Iniciar monitor de instancias (cada 30 minutos)
   const { startMonitoring } = require('./utils/instanceMonitor');
-  startMonitoring(4);
+  startMonitoring(0.5);
 });
 
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));

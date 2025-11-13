@@ -51,12 +51,13 @@
 ├── utils/
 │   ├── retry.js          # axios-retry config + timeout global
 │   ├── logger.js         # Winston logger
-│   ├── notifications.js  # Sistema notificaciones con agregación
+│   ├── notifications.js  # Sistema notificaciones con agregación + fallback email
+│   ├── email.js          # Servicio de email usando Resend
 │   ├── validation.js     # Payload validation + truncamiento
 │   ├── sanitizer.js      # Redactar datos sensibles en logs
 │   ├── webhookAuth.js    # Validación whitelist de webhooks
 │   ├── betaFeatures.js   # Beta feature flags helpers
-│   └── instanceMonitor.js # Monitor instancias (cada 4h)
+│   └── instanceMonitor.js # Monitor instancias (cada 30min)
 ├── public/                 # QR panel (DO NOT MODIFY)
 └── test/                   # Tests unitarios e integración
 ```
@@ -108,6 +109,10 @@ EVOLUTION_BASE_URL=https://pabs-evolution-api.r4isqy.easypanel.host
 ADMIN_WHATSAPP=34633839200@s.whatsapp.net
 ADMIN_INSTANCE=pabsai
 ADMIN_INSTANCE_APIKEY=xxx  # Requerido para notificaciones
+
+# Email fallback (opcional - usa Resend)
+RESEND_API_KEY=re_xxx  # API key de Resend (opcional)
+ADMIN_EMAIL=tu-email@example.com  # Email para recibir alertas de fallback
 
 # Legacy (QR panel)
 N8N_BASE_URL=https://newbrain.pabs.ai
@@ -291,17 +296,25 @@ logBetaUsage(client, 'feature-name', { metadata: 'value' });
 - 💡 Quick Fix Suggestions contextuales según tipo de error
 - Stack trace completo
 
+**Sistema de fallback (Email):**
+- Notificaciones primarias vía WhatsApp (`ADMIN_INSTANCE`)
+- Si WhatsApp falla → Email automático vía Resend
+- Si ambos fallan → Log crítico en Winston
+- Email usa formato HTML con toda la información del error
+- Configuración opcional: requiere `RESEND_API_KEY` y `ADMIN_EMAIL`
+
 **Triggers:** Token refresh failed, webhook errors, OpenAI failures, instancias desconectadas
 
 ### 5. Monitor de Instancias
 
-**Frecuencia:** Cada 4 horas automáticamente
+**Frecuencia:** Cada 30 minutos automáticamente
 
 **Funcionalidad:**
 - Verifica conexión de todas las instancias Evolution API (`/instance/connectionState`)
 - Detecta cambios de estado (desconexión/reconexión)
 - Notifica solo en cambios (no spam)
 - Agrupa por cliente afectado
+- Carga mínima: ~7,200 requests/día con 150 instancias (~0.08 req/s)
 
 ---
 

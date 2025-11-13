@@ -55,6 +55,10 @@ module.exports = {
   ADMIN_INSTANCE: process.env.ADMIN_INSTANCE,
   ADMIN_INSTANCE_APIKEY: process.env.ADMIN_INSTANCE_APIKEY,
 
+  // Email fallback (Resend) - Opcional
+  RESEND_API_KEY: process.env.RESEND_API_KEY,
+  ADMIN_EMAIL: process.env.ADMIN_EMAIL,
+
   // Legacy (QR panel)
   N8N_BASE_URL: process.env.N8N_BASE_URL,
   N8N_AUTH_HEADER: process.env.N8N_AUTH_HEADER
