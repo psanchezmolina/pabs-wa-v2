@@ -90,8 +90,40 @@ function splitMessage(message, maxLength = 3500) {
   return parts;
 }
 
+/**
+ * Validar payload del webhook del agente
+ */
+function validateAgentPayload(body) {
+  const required = ['contact_id', 'location_id'];
+
+  for (const field of required) {
+    if (!body[field]) {
+      return { valid: false, missing: field };
+    }
+  }
+
+  if (!body.customData) {
+    return { valid: false, missing: 'customData' };
+  }
+
+  if (!body.customData.message_body) {
+    return { valid: false, missing: 'customData.message_body' };
+  }
+
+  if (!body.customData.agente) {
+    return { valid: false, missing: 'customData.agente' };
+  }
+
+  if (!body.message || !body.message.type) {
+    return { valid: false, missing: 'message.type' };
+  }
+
+  return { valid: true };
+}
+
 module.exports = {
   validateGHLPayload,
   validateWhatsAppPayload,
+  validateAgentPayload,
   splitMessage
 };

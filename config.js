@@ -11,6 +11,11 @@ const REQUIRED_ENV_VARS = [
   'EVOLUTION_BASE_URL'
 ];
 
+// Variables opcionales para features beta (Langfuse para agent system)
+const OPTIONAL_ENV_VARS = {
+  langfuse: ['LANGFUSE_BASE_URL']  // Public/Secret keys now stored per-client in database
+};
+
 const missing = REQUIRED_ENV_VARS.filter(key => !process.env[key]);
 
 if (missing.length > 0) {
@@ -19,13 +24,23 @@ if (missing.length > 0) {
   process.exit(1);
 }
 
-// Validar formato de URLs
+// Validar formato de URLs (solo las que existen)
 const urlVars = ['SUPABASE_URL', 'EVOLUTION_BASE_URL', 'GHL_REDIRECT_URI'];
 for (const key of urlVars) {
   try {
     new URL(process.env[key]);
   } catch (error) {
     console.error(`❌ Invalid URL format for ${key}:`, process.env[key]);
+    process.exit(1);
+  }
+}
+
+// Validar LANGFUSE_BASE_URL solo si está configurado
+if (process.env.LANGFUSE_BASE_URL) {
+  try {
+    new URL(process.env.LANGFUSE_BASE_URL);
+  } catch (error) {
+    console.error(`❌ Invalid URL format for LANGFUSE_BASE_URL:`, process.env.LANGFUSE_BASE_URL);
     process.exit(1);
   }
 }
@@ -46,6 +61,9 @@ module.exports = {
 
   // OpenAI (global key)
   OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+
+  // Langfuse (prompt management - base URL only, keys stored per-client in DB)
+  LANGFUSE_BASE_URL: process.env.LANGFUSE_BASE_URL,
 
   // Evolution API
   EVOLUTION_BASE_URL: process.env.EVOLUTION_BASE_URL,

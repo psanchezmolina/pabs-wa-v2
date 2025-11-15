@@ -17,6 +17,8 @@ function cleanClient(client) {
     conversation_provider_id: client.conversation_provider_id?.trim(),
     ghl_access_token: client.ghl_access_token?.trim(),
     ghl_refresh_token: client.ghl_refresh_token?.trim(),
+    langfuse_public_key: client.langfuse_public_key?.trim(),
+    langfuse_secret_key: client.langfuse_secret_key?.trim(),
     // is_beta es booleano, no necesita limpieza - se preserva automáticamente
     is_beta: client.is_beta ?? false // Fallback a false si no existe
   };
@@ -127,8 +129,39 @@ async function updateGHLTokens(locationId, accessToken, refreshToken, expiresIn)
   }
 }
 
+async function getAgentConfig(locationId, agentName) {
+  const { data, error } = await supabase
+    .from('agent_configs')
+    .select('*')
+    .eq('location_id', locationId)
+    .eq('agent_name', agentName)
+    .single();
+
+  if (error) {
+    logger.error('Error querying agent config', {
+      locationId,
+      agentName,
+      error: error.message
+    });
+    throw new Error(`Database error: ${error.message}`);
+  }
+
+  if (!data) {
+    throw new Error(`Agent config not found: ${locationId}/${agentName}`);
+  }
+
+  logger.info('Agent config found', {
+    locationId,
+    agentName,
+    chatflow_id: data.chatflow_id
+  });
+
+  return data;
+}
+
 module.exports = {
   getClientByLocationId,
   getClientByInstanceName,
-  updateGHLTokens
+  updateGHLTokens,
+  getAgentConfig
 };

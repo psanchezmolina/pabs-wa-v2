@@ -30,6 +30,8 @@
 - GoHighLevel (CRM + OAuth)
 - Evolution API v2 (WhatsApp)
 - OpenAI (Whisper + GPT-4o-mini Vision)
+- Langfuse (Prompt Management - beta feature)
+- Flowise (Conversational AI - beta feature)
 
 ---
 
@@ -41,13 +43,18 @@
 ├── config.js               # Env vars (CommonJS)
 ├── webhooks/
 │   ├── ghl.js            # GHL → WhatsApp handler
-│   └── whatsapp.js       # WhatsApp → GHL handler
+│   ├── whatsapp.js       # WhatsApp → GHL handler
+│   └── agent.js          # Agent system handler (beta)
 ├── services/
 │   ├── supabase.js       # DB client + queries
 │   ├── ghl.js            # GHL API + OAuth auto-refresh + caché tokens
 │   ├── evolution.js      # Evolution API wrapper
 │   ├── openai.js         # Whisper + Vision
-│   └── cache.js          # Caché en memoria (tokens, contactos, conversaciones)
+│   ├── cache.js          # Caché en memoria (tokens, contactos, conversaciones)
+│   ├── langfuse.js       # Langfuse API client (beta)
+│   ├── flowise.js        # Flowise API client (beta)
+│   ├── agentBuffer.js    # Message buffering + debouncing (beta)
+│   └── mediaProcessor.js # Attachment processing (beta)
 ├── utils/
 │   ├── retry.js          # axios-retry config + timeout global
 │   ├── logger.js         # Winston logger
@@ -57,6 +64,7 @@
 │   ├── sanitizer.js      # Redactar datos sensibles en logs
 │   ├── webhookAuth.js    # Validación whitelist de webhooks
 │   ├── betaFeatures.js   # Beta feature flags helpers
+│   ├── mediaHelper.js    # DRY media processing helpers (shared)
 │   └── instanceMonitor.js # Monitor instancias (cada 30min)
 ├── public/                 # QR panel (DO NOT MODIFY)
 └── test/                   # Tests unitarios e integración
@@ -114,6 +122,10 @@ ADMIN_INSTANCE_APIKEY=xxx  # Requerido para notificaciones
 RESEND_API_KEY=re_xxx  # API key de Resend (opcional)
 ADMIN_EMAIL=tu-email@example.com  # Email para recibir alertas de fallback
 
+# Langfuse (opcional - solo para agent system beta)
+# Solo URL base global - Las API keys se guardan por cliente en clients_details
+LANGFUSE_BASE_URL=https://pabs-langfuse-web.r4isqy.easypanel.host
+
 # Legacy (QR panel)
 N8N_BASE_URL=https://newbrain.pabs.ai
 N8N_AUTH_HEADER=Bearer xxx
@@ -136,6 +148,8 @@ N8N_AUTH_HEADER=Bearer xxx
 - `ghl_refresh_token` (TEXT) - Token de refresco OAuth
 - `ghl_token_expiry` (TIMESTAMPTZ) - Expiración del token
 - `is_beta` (BOOLEAN, DEFAULT false) - Flag para clientes en programa beta
+- `langfuse_public_key` (VARCHAR) - Langfuse Public Key del proyecto del cliente (pk-lf-...)
+- `langfuse_secret_key` (VARCHAR) - Langfuse Secret Key del proyecto del cliente (sk-lf-...)
 
 **Columnas ignoradas:** `openai_apikey`, `is_active`, `webhook_secret`
 
@@ -145,6 +159,22 @@ N8N_AUTH_HEADER=Bearer xxx
 - RLS (Row Level Security) activado
 - Política: "Allow authenticated access" permite acceso con anon key
 - No requiere service_role key
+
+### Table: `agent_configs` (Beta)
+
+**Columnas:**
+
+- `id` (SERIAL PRIMARY KEY)
+- `location_id` (VARCHAR NOT NULL) - Identificador de ubicación GHL
+- `agent_name` (VARCHAR NOT NULL) - Nombre del agente (ej: "agente-roi")
+- `flowise_webhook` (VARCHAR NOT NULL) - URL completa del webhook de Flowise
+- `chatflow_id` (VARCHAR NOT NULL) - ID del chatflow en Flowise
+- `created_at` (TIMESTAMP DEFAULT NOW())
+- `updated_at` (TIMESTAMP DEFAULT NOW())
+
+**Constraints:** `UNIQUE(location_id, agent_name)`
+
+**Propósito:** Configuración de agentes conversacionales con IA para el sistema beta de agentes.
 
 ---
 
@@ -214,6 +244,13 @@ logBetaUsage(client, 'feature-name', { metadata: 'value' });
   - Rechaza con 403 si instancia no está autorizada
   - Busca automáticamente la configuración del cliente en Supabase usando `instance_name`
   - Soporta múltiples instancias simultáneamente sin necesidad de endpoints diferentes
+- `POST /webhook/agent` - **Webhook de agent system** (beta feature)
+  - Recibe mensajes de GHL para procesamiento con IA conversacional
+  - **Validación whitelist:** Verifica que `location_id` exista en BD + `is_beta=true`
+  - Rechaza con 403 si no está autorizado o no tiene beta activado
+  - Buffering de mensajes con debouncing de 7 segundos
+  - Procesamiento asíncrono con Flowise + Langfuse
+  - Retorna 200 inmediatamente, procesamiento ocurre en background
 
 ### OAuth
 
@@ -315,6 +352,126 @@ logBetaUsage(client, 'feature-name', { metadata: 'value' });
 - Notifica solo en cambios (no spam)
 - Agrupa por cliente afectado
 - Carga mínima: ~7,200 requests/día con 150 instancias (~0.08 req/s)
+
+### 6. Agent System (Beta Feature)
+
+**Estado:** Beta - requiere `is_beta=true` en `clients_details`
+
+**Overview:**
+Sistema de agentes conversacionales con IA que procesa mensajes de GHL (SMS, IG, FB), los agrupa con debouncing (7s), los envía a Flowise para procesamiento AI, y retorna respuestas multiparte a través de GHL.
+
+**Arquitectura:**
+- **Webhook:** `POST /webhook/agent` (validación whitelist + beta flag)
+- **Buffer:** Mensajes se acumulan en RAM (NodeCache, 10min TTL)
+- **Debouncing:** 7 segundos (auto-reset en nuevo mensaje)
+- **AI Processing:** Flowise + Langfuse (prompt management)
+- **Response:** Hasta 3 partes registradas en GHL como outbound
+
+**Database Schema:**
+
+```sql
+-- Tabla de configuración de agentes
+CREATE TABLE agent_configs (
+  id SERIAL PRIMARY KEY,
+  location_id VARCHAR NOT NULL,
+  agent_name VARCHAR NOT NULL,
+  flowise_webhook VARCHAR NOT NULL,  -- URL completa del chatflow
+  chatflow_id VARCHAR NOT NULL,      -- ID del chatflow en Flowise
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(location_id, agent_name)
+);
+```
+
+**Servicios:**
+- `services/langfuse.js` - Obtener prompts (caché 1h)
+- `services/flowise.js` - Llamar chatflow + parser 3 niveles
+- `services/agentBuffer.js` - Gestión de buffers con debouncing
+- `services/mediaProcessor.js` - Procesar attachments (audio/imagen)
+- `utils/mediaHelper.js` - **DRY helpers** compartidos con whatsapp.js
+
+**Workflow completo:**
+
+1. **Recepción:** GHL envía webhook con mensaje (SMS/IG/FB)
+2. **Validación:** Middleware verifica `location_id` + `is_beta=true`
+3. **Procesamiento:** Attachments procesados con OpenAI (compartido con whatsapp.js)
+4. **Buffering:** Mensaje añadido al buffer del contacto+canal
+5. **Debounce:** Timer de 7s configurado (auto-reset si llega nuevo mensaje)
+6. **AI Processing (al expirar debounce):**
+   - Verificar buffer no cambió (v1: comparar cantidad mensajes)
+   - Obtener prompt de Langfuse (cacheado 1h)
+   - Buscar/crear conversación en GHL
+   - Llamar Flowise con mensajes buffereados + startState
+   - Parsear respuesta JSON (3 niveles fallback)
+7. **Respuesta:** Registrar partes en GHL con dirección `outbound`
+8. **Cleanup:** Limpiar buffer
+
+**Payload esperado (GHL):**
+
+```json
+{
+  "contact_id": "xxxxx",
+  "location_id": "xxxxx",
+  "customData": {
+    "message_body": "texto del mensaje",
+    "agente": "agente-roi"
+  },
+  "message": {
+    "type": "SMS",  // o "IG", "FB"
+    "attachments": ["url1", "url2"]
+  }
+}
+```
+
+**Flowise startState:**
+
+```json
+{
+  "contact_id": "xxxxx",
+  "conversation_id": "xxxxx",
+  "location_id": "xxxxx",
+  "canal": "SMS",
+  "prompt": "texto del prompt desde Langfuse"
+}
+```
+
+**Environment Variables (opcionales - solo para beta):**
+
+```bash
+# Langfuse (prompt management - solo URL base)
+LANGFUSE_BASE_URL=https://pabs-langfuse-web.r4isqy.easypanel.host
+```
+
+**Configuración por cliente en BD:**
+
+```sql
+-- Cada cliente tiene sus propias Langfuse API keys (1 cliente = 1 proyecto Langfuse)
+UPDATE clients_details
+SET
+  langfuse_public_key = 'pk-lf-xxx',  -- Desde Langfuse UI → Project Settings → API Keys
+  langfuse_secret_key = 'sk-lf-xxx'   -- Desde Langfuse UI → Project Settings → API Keys
+WHERE location_id = 'jWmwy7nMqnsXQPdZdSW8';
+```
+
+**Notas importantes:**
+- **1 cliente = 1 proyecto Langfuse** con sus propias API keys almacenadas en BD
+- `LANGFUSE_BASE_URL` es global (mismo servidor Langfuse self-hosted para todos)
+- `langfuse_public_key` y `langfuse_secret_key` son **por cliente** en `clients_details`
+- `services/langfuse.js` recibe keys como parámetros: `getPrompt(agentName, publicKey, secretKey)`
+- Caché usa clave combinada `publicKey:agentName` para evitar conflictos entre clientes
+- Media helpers en `utils/mediaHelper.js` son **DRY** - compartidos con whatsapp.js
+- Respuestas se registran en GHL (no se envían directamente via WhatsApp)
+- GHL maneja el envío al canal correcto (SMS, IG, FB, WhatsApp)
+- Buffer v1: simple comparación de cantidad de mensajes (puede mejorarse con hash)
+- Procesamiento asíncrono: webhook retorna 200 inmediatamente
+- Errores en debounce callback tienen manejo separado (no capturados por try/catch principal)
+
+**Cliente de prueba:**
+- Location ID: `jWmwy7nMqnsXQPdZdSW8`
+- Agente: `agente-roi`
+- is_beta: `true`
+
+Ver `FLOWISE.md` para documentación técnica completa del sistema.
 
 ---
 
@@ -547,3 +704,5 @@ npm test -- test/unit/**/*  # Solo tests unitarios
 - [GHL OAuth 2.0](https://marketplace.gohighlevel.com/docs/Authorization/OAuth2.0)
 - [Evolution API Docs](https://doc.evolution-api.com/v2/api-reference/get-information)
 - [OpenAI API Docs](https://platform.openai.com/docs/)
+- [Langfuse API Docs](https://api.reference.langfuse.com)
+- [Flowise API Docs](https://docs.flowiseai.com)

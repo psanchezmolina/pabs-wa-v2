@@ -8,9 +8,10 @@ const config = require('./config');
 const logger = require('./utils/logger');
 const { handleGHLWebhook } = require('./webhooks/ghl');
 const { handleWhatsAppWebhook } = require('./webhooks/whatsapp');
+const { handleAgentWebhook } = require('./webhooks/agent');
 const { updateGHLTokens } = require('./services/supabase');
 const { createClient } = require('@supabase/supabase-js');
-const { validateGHLWebhook, validateWhatsAppWebhook } = require('./utils/webhookAuth');
+const { validateGHLWebhook, validateWhatsAppWebhook, validateAgentWhitelist } = require('./utils/webhookAuth');
 
 const supabase = createClient(config.SUPABASE_URL, config.SUPABASE_KEY);
 
@@ -53,6 +54,8 @@ app.post('/webhook/ghl', validateGHLWebhook, handleGHLWebhook);
 app.post('/webhook/whatsapp', validateWhatsAppWebhook, handleWhatsAppWebhook);
 // Evolution API envía eventos con el tipo en la ruta (ej: /webhook/whatsapp/messages-upsert)
 app.post('/webhook/whatsapp/*', validateWhatsAppWebhook, handleWhatsAppWebhook);
+// Agent webhook (beta feature - requiere is_beta=true)
+app.post('/webhook/agent', validateAgentWhitelist, handleAgentWebhook);
 
 // Check beta status
 app.get('/api/check-beta', async (req, res) => {
