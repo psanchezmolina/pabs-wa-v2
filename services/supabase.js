@@ -130,33 +130,51 @@ async function updateGHLTokens(locationId, accessToken, refreshToken, expiresIn)
 }
 
 async function getAgentConfig(locationId, agentName) {
-  const { data, error } = await supabase
+  // Primero intentar sin .single() para ver cuántos registros hay
+  const { data: allData, error: queryError } = await supabase
     .from('agent_configs')
     .select('*')
     .eq('location_id', locationId)
-    .eq('agent_name', agentName)
-    .single();
+    .eq('agent_name', agentName);
 
-  if (error) {
+  if (queryError) {
     logger.error('Error querying agent config', {
       locationId,
       agentName,
-      error: error.message
+      error: queryError.message
     });
-    throw new Error(`Database error: ${error.message}`);
+    throw new Error(`Database error: ${queryError.message}`);
   }
 
-  if (!data) {
+  logger.info('Query result for agent config', {
+    locationId,
+    agentName,
+    count: allData?.length || 0,
+    found: allData?.length > 0
+  });
+
+  if (!allData || allData.length === 0) {
     throw new Error(`Agent config not found: ${locationId}/${agentName}`);
   }
+
+  if (allData.length > 1) {
+    logger.warn('Multiple agent configs found', {
+      locationId,
+      agentName,
+      count: allData.length
+    });
+  }
+
+  // Retornar el primero
+  const config = allData[0];
 
   logger.info('Agent config found', {
     locationId,
     agentName,
-    chatflow_id: data.chatflow_id
+    flowise_webhook_url: config.flowise_webhook_url
   });
 
-  return data;
+  return config;
 }
 
 module.exports = {
