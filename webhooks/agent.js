@@ -67,26 +67,30 @@ async function handleAgentWebhook(req, res) {
       message_body: message_body,
       message_body_length: message_body?.length || 0,
       message_body_type: typeof message_body,
-      has_attachments: !!message.attachments,
-      attachments_count: message.attachments?.length || 0,
+      has_message_attachments: !!message.attachments,
+      message_attachments_count: message.attachments?.length || 0,
+      has_customData_attachment: !!customData.message_attachment,
+      customData_attachment: customData.message_attachment,
       customData_keys: Object.keys(customData || {}),
       message_keys: Object.keys(message || {})
     });
 
     logger.info('🔍 Step 2: Processing message and attachments...');
 
-    // Procesar attachment si existe
-    let processedMessage = message_body || '';  // 🐛 Fallback a string vacío si undefined
-    if (message.attachments && message.attachments.length > 0) {
-      logger.info('📎 Processing attachments', { count: message.attachments.length });
+    // SIEMPRE usar message_body (incluso si es espacio/punto de trigger)
+    // Concatenaremos attachments después, el espacio inicial no molesta al agente
+    let processedMessage = message_body || '';
 
-      // Procesar cada attachment con error handling defensivo
+    // Procesar attachments desde message.attachments[] (array de URLs)
+    if (message.attachments && message.attachments.length > 0) {
+      logger.info('📎 Processing message.attachments[]', { count: message.attachments.length });
+
       for (let i = 0; i < message.attachments.length; i++) {
         const attachment = message.attachments[i];
         try {
           logger.info(`🔄 Processing attachment ${i + 1}/${message.attachments.length}`, { attachment });
           const attachmentText = await mediaProcessor.processAttachment(attachment);
-          processedMessage += `\n${attachmentText}`;
+          processedMessage += `\n${attachmentText}`;  // Siempre concatenar con newline
           logger.info(`✅ Attachment ${i + 1} processed successfully`);
         } catch (attachmentError) {
           logger.error(`❌ Failed to process attachment ${i + 1}`, {
@@ -95,12 +99,36 @@ async function handleAgentWebhook(req, res) {
             attachment
           });
           console.log(`❌ ATTACHMENT ERROR:`, attachmentError);
-          // Continuar con el siguiente attachment en vez de fallar completamente
           processedMessage += `\n[Attachment ${i + 1} could not be processed]`;
         }
       }
 
-      logger.info('✅ Attachments processed', { attachmentCount: message.attachments.length });
+      logger.info('✅ message.attachments[] processed', { count: message.attachments.length });
+    }
+
+    // Procesar attachment desde customData.message_attachment (Instagram/FB single attachment)
+    if (customData.message_attachment && customData.message_attachment.trim()) {
+      logger.info('📎 Processing customData.message_attachment', { url: customData.message_attachment });
+
+      try {
+        const attachmentText = await mediaProcessor.processAttachment(customData.message_attachment);
+        processedMessage += `\n${attachmentText}`;  // Siempre concatenar con newline
+        logger.info('✅ customData.message_attachment processed successfully');
+      } catch (attachmentError) {
+        logger.error('❌ Failed to process customData.message_attachment', {
+          error: attachmentError.message,
+          stack: attachmentError.stack,
+          url: customData.message_attachment
+        });
+        console.log(`❌ ATTACHMENT ERROR:`, attachmentError);
+        processedMessage += `\n[Attachment could not be processed]`;
+      }
+    }
+
+    // Fallback: si después de todo no hay nada, usar punto mínimo
+    if (!processedMessage.trim()) {
+      processedMessage = '.';
+      logger.warn('⚠️ No content after processing, using fallback "."');
     }
 
     logger.info('✅ Step 2 COMPLETE: Message processed', {
