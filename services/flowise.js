@@ -7,11 +7,10 @@ const { notifyAdmin } = require('../utils/notifications');
  * Llamar al agente de Flowise
  * @param {object} agentConfig - Configuración del agente de BD
  * @param {string} question - Mensaje concatenado del usuario
- * @param {string} sessionId - ID de sesión único
- * @param {object} overrideConfig - Configuración con startState
+ * @param {object} overrideConfig - Configuración con sessionId y startState
  * @returns {Promise<object>} - Respuesta de Flowise
  */
-async function callFlowiseAgent(agentConfig, question, sessionId, overrideConfig) {
+async function callFlowiseAgent(agentConfig, question, overrideConfig) {
   const { flowise_webhook_url, flowise_api_key, agent_name } = agentConfig;
 
   const payload = {
@@ -29,7 +28,7 @@ async function callFlowiseAgent(agentConfig, question, sessionId, overrideConfig
 
   logger.info('🔄 Calling Flowise agent', {
     agentName: agent_name,
-    sessionId,
+    sessionId: overrideConfig.sessionId,
     questionLength: question.length,
     startStateFields: overrideConfig.startState?.length || 0
   });
@@ -44,7 +43,7 @@ async function callFlowiseAgent(agentConfig, question, sessionId, overrideConfig
 
     logger.info('✅ Flowise agent responded', {
       agentName: agent_name,
-      sessionId,
+      sessionId: overrideConfig.sessionId,
       responseSize: JSON.stringify(response.data).length
     });
 
@@ -53,7 +52,7 @@ async function callFlowiseAgent(agentConfig, question, sessionId, overrideConfig
   } catch (error) {
     logger.error('❌ Flowise agent call failed', {
       agentName: agent_name,
-      sessionId,
+      sessionId: overrideConfig.sessionId,
       error: error.message,
       stack: error.stack,
       status: error.response?.status,
@@ -63,7 +62,7 @@ async function callFlowiseAgent(agentConfig, question, sessionId, overrideConfig
 
     await notifyAdmin('Flowise Agent Call Failed', {
       agentName: agent_name,
-      sessionId,
+      sessionId: overrideConfig.sessionId,
       error: error.message,
       stack: error.stack,
       endpoint: flowise_webhook_url,
@@ -72,6 +71,7 @@ async function callFlowiseAgent(agentConfig, question, sessionId, overrideConfig
       responseData: error.response?.data,
       payload: {
         question: question.substring(0, 200),
+        sessionId: overrideConfig.sessionId,
         startStateKeys: overrideConfig.startState?.map(s => s.key)
       }
     });

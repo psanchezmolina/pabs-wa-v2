@@ -425,17 +425,25 @@ CREATE TABLE agent_configs (
 }
 ```
 
-**Flowise startState:**
+**Flowise payload completo:**
 
 ```json
 {
-  "contact_id": "xxxxx",
-  "conversation_id": "xxxxx",
-  "location_id": "xxxxx",
-  "canal": "SMS",
-  "prompt": "texto del prompt desde Langfuse"
+  "question": "mensaje del usuario",
+  "overrideConfig": {
+    "sessionId": "conversation_id_de_ghl",
+    "startState": [
+      { "key": "contact_id", "value": "xxxxx" },
+      { "key": "conversation_id", "value": "xxxxx" },
+      { "key": "location_id", "value": "xxxxx" },
+      { "key": "canal", "value": "SMS" },
+      { "key": "prompt", "value": "texto del prompt desde Langfuse" }
+    ]
+  }
 }
 ```
+
+**Importante:** `sessionId` se pasa dentro de `overrideConfig` (NO como parámetro separado) para mantener la memoria de la conversación en Flowise. Usa el `conversationId` de GHL como valor.
 
 **Environment Variables (opcionales - solo para beta):**
 
@@ -461,6 +469,7 @@ WHERE location_id = 'jWmwy7nMqnsXQPdZdSW8';
 - `langfuse_public_key` y `langfuse_secret_key` son **por cliente** en `clients_details`
 - `services/langfuse.js` recibe keys como parámetros: `getPrompt(agentName, publicKey, secretKey)`
 - Caché usa clave combinada `publicKey:agentName` para evitar conflictos entre clientes
+- **sessionId en Flowise:** Se pasa dentro de `overrideConfig.sessionId` (usa `conversationId` de GHL) para mantener memoria de conversación
 - Media helpers en `utils/mediaHelper.js` son **DRY** - compartidos con whatsapp.js
 - Respuestas se registran en GHL (no se envían directamente via WhatsApp)
 - GHL maneja el envío al canal correcto (SMS, IG, FB, WhatsApp)

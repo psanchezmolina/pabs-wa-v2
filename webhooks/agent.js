@@ -230,27 +230,24 @@ async function handleAgentWebhook(req, res) {
           messagePreview: combinedMessages.substring(0, 100)
         });
 
-        // Preparar overrideConfig con startState
+        // Preparar overrideConfig con sessionId y startState
         const overrideConfig = {
+          sessionId: conversationId,  // ✅ Mantiene memoria de conversación en Flowise
           startState: Object.entries(startState).map(([key, value]) => ({
             key,
             value
           }))
         };
 
-        // Usar conversationId como sessionId
-        const sessionId = conversationId;
-
         const flowiseResponse = await flowiseAPI.callFlowiseAgent(
           agentConfig,
           combinedMessages,
-          sessionId,
           overrideConfig
         );
 
         logger.info('✅ Step 8 COMPLETE: Flowise response received', {
           agentName: agentConfig.agent_name,
-          sessionId
+          sessionId: conversationId
         });
 
         // Parsear respuesta (3-level fallback)

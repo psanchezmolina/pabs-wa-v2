@@ -220,6 +220,7 @@ LANGFUSE_BASE_URL=https://pabs-langfuse-web.r4isqy.easypanel.host
 {
   "question": "hola kevin, qué tal?",
   "overrideConfig": {
+    "sessionId": "conv_xxx",
     "startState": [
       { "key": "contact_id", "value": "GcwK4TcH5FfPfIu5MtjN" },
       { "key": "conversation_id", "value": "conv_xxx" },
@@ -234,6 +235,8 @@ LANGFUSE_BASE_URL=https://pabs-langfuse-web.r4isqy.easypanel.host
   }
 }
 ```
+
+**Nota importante:** El `sessionId` se pasa dentro de `overrideConfig` (no como parámetro separado) para mantener la memoria de la conversación en Flowise. Usa el `conversationId` de GHL como valor único por conversación.
 
 **StartState siempre incluye (todo en snake_case):**
 - `contact_id` (string) - REQUERIDO - ID del contacto en GHL
@@ -262,7 +265,7 @@ LANGFUSE_BASE_URL=https://pabs-langfuse-web.r4isqy.easypanel.host
 3. **Nivel 3:** Fallback - enviar todo como `parte1`, `parte2` y `parte3` = null
 
 **Funciones:**
-- `callFlowiseAgent(agentConfig, question, sessionId, overrideConfig)` → Llama Flowise
+- `callFlowiseAgent(agentConfig, question, overrideConfig)` → Llama Flowise (sessionId va dentro de overrideConfig)
 - `parseFlowiseResponse(data)` → Parsea respuesta con fallback robusto
 
 ---
