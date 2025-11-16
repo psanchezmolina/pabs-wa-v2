@@ -10,12 +10,17 @@ const agentBuffer = require('../services/agentBuffer');
 const mediaProcessor = require('../services/mediaProcessor');
 
 async function handleAgentWebhook(req, res) {
-  logger.info('🤖 AGENT WEBHOOK RECEIVED', {
+  // 🐛 DEBUG: Log INMEDIATO para confirmar que llega el webhook
+  const initialLog = {
     location_id: req.body?.location_id,
     contact_id: req.body?.contact_id,
     agente: req.body?.customData?.agente,
-    canal: req.body?.message?.type
-  });
+    canal: req.body?.message?.type,
+    timestamp: new Date().toISOString()
+  };
+
+  logger.info('🤖 AGENT WEBHOOK RECEIVED', initialLog);
+  console.log('🤖 AGENT WEBHOOK RECEIVED (console.log):', JSON.stringify(initialLog, null, 2));
 
   try {
     // Validar payload
@@ -23,6 +28,7 @@ async function handleAgentWebhook(req, res) {
     const validation = validateAgentPayload(req.body);
     if (!validation.valid) {
       logger.warn('❌ Invalid Agent payload', { reason: validation.reason || validation.missing });
+      console.log('❌ VALIDATION FAILED:', validation);
       return res.status(400).json({ error: 'Invalid payload', details: validation });
     }
 
@@ -32,6 +38,9 @@ async function handleAgentWebhook(req, res) {
     const customData = req.body.customData;
     const message = req.body.message;
     const { message_body, agente } = customData;
+
+    // Extraer tags (puede venir como string o array)
+    const tags = req.body.tags || '';
 
     // Mapear message.type numérico a string (valores verificados de GHL)
     const typeMap = {
@@ -53,24 +62,49 @@ async function handleAgentWebhook(req, res) {
       canal
     });
 
+    // 🐛 DEBUG: Loguear payload completo para Instagram
+    logger.info('🐛 DEBUG: Full payload received', {
+      message_body: message_body,
+      message_body_length: message_body?.length || 0,
+      message_body_type: typeof message_body,
+      has_attachments: !!message.attachments,
+      attachments_count: message.attachments?.length || 0,
+      customData_keys: Object.keys(customData || {}),
+      message_keys: Object.keys(message || {})
+    });
+
     logger.info('🔍 Step 2: Processing message and attachments...');
 
     // Procesar attachment si existe
-    let processedMessage = message_body;
+    let processedMessage = message_body || '';  // 🐛 Fallback a string vacío si undefined
     if (message.attachments && message.attachments.length > 0) {
       logger.info('📎 Processing attachments', { count: message.attachments.length });
 
-      // Procesar cada attachment
-      for (const attachment of message.attachments) {
-        const attachmentText = await mediaProcessor.processAttachment(attachment);
-        processedMessage += `\n${attachmentText}`;
+      // Procesar cada attachment con error handling defensivo
+      for (let i = 0; i < message.attachments.length; i++) {
+        const attachment = message.attachments[i];
+        try {
+          logger.info(`🔄 Processing attachment ${i + 1}/${message.attachments.length}`, { attachment });
+          const attachmentText = await mediaProcessor.processAttachment(attachment);
+          processedMessage += `\n${attachmentText}`;
+          logger.info(`✅ Attachment ${i + 1} processed successfully`);
+        } catch (attachmentError) {
+          logger.error(`❌ Failed to process attachment ${i + 1}`, {
+            error: attachmentError.message,
+            stack: attachmentError.stack,
+            attachment
+          });
+          console.log(`❌ ATTACHMENT ERROR:`, attachmentError);
+          // Continuar con el siguiente attachment en vez de fallar completamente
+          processedMessage += `\n[Attachment ${i + 1} could not be processed]`;
+        }
       }
 
       logger.info('✅ Attachments processed', { attachmentCount: message.attachments.length });
     }
 
     logger.info('✅ Step 2 COMPLETE: Message processed', {
-      originalLength: message_body.length,
+      originalLength: message_body?.length || 0,
       processedLength: processedMessage.length,
       hasAttachments: message.attachments?.length > 0
     });
@@ -202,6 +236,7 @@ async function handleAgentWebhook(req, res) {
           conversation_id: conversationId,
           location_id: location_id,
           canal: canal,
+          tags: tags,
           info_crm: customData.info_crm || '',
           info_crm_adicional: customData.info_crm_adicional || '',
           resumen_llamadas: customData.resumen_llamadas || '',
@@ -218,6 +253,7 @@ async function handleAgentWebhook(req, res) {
           canal,
           messageCount: currentBuffer.length,
           combinedLength: combinedMessages.length,
+          hasTags: !!startState.tags,
           hasInfoCrm: !!startState.info_crm,
           hasInfoCrmAdicional: !!startState.info_crm_adicional,
           hasResumenLlamadas: !!startState.resumen_llamadas,

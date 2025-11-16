@@ -437,6 +437,7 @@ CREATE TABLE agent_configs (
       { "key": "conversation_id", "value": "xxxxx" },
       { "key": "location_id", "value": "xxxxx" },
       { "key": "canal", "value": "SMS" },
+      { "key": "tags", "value": "activar-ia, cliente-premium" },
       { "key": "prompt", "value": "texto del prompt desde Langfuse" }
     ]
   }

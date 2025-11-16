@@ -226,6 +226,7 @@ LANGFUSE_BASE_URL=https://pabs-langfuse-web.r4isqy.easypanel.host
       { "key": "conversation_id", "value": "conv_xxx" },
       { "key": "location_id", "value": "jWmwy7nMqnsXQPdZdSW8" },
       { "key": "canal", "value": "SMS" },
+      { "key": "tags", "value": "activar-ia, cliente-premium" },
       { "key": "info_crm", "value": "nombre: Pablo..." },
       { "key": "info_crm_adicional", "value": "Nivel: Pro..." },
       { "key": "resumen_llamadas", "value": "Usuario preguntó..." },
@@ -243,6 +244,7 @@ LANGFUSE_BASE_URL=https://pabs-langfuse-web.r4isqy.easypanel.host
 - `conversation_id` (string) - REQUERIDO - ID de la conversación en GHL
 - `location_id` (string) - REQUERIDO - ID de la ubicación en GHL
 - `canal` (string) - REQUERIDO - Canal del mensaje: "SMS", "IG", "FB"
+- `tags` (string) - Tags/etiquetas del contacto en GHL (puede estar vacío)
 - `info_crm` (string) - Contexto estándar del contacto (puede estar vacío)
 - `info_crm_adicional` (string) - Contexto custom adicional (puede estar vacío)
 - `resumen_llamadas` (string) - Resumen de llamadas previas (puede estar vacío)
