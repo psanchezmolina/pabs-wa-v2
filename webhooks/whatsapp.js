@@ -12,20 +12,20 @@ async function handleWhatsAppWebhook(req, res) {
   const debugNumber = '34660722687@s.whatsapp.net';
   const isDebugNumber = req.body?.data?.key?.remoteJid === debugNumber;
 
-  // Solo logear si es el número de debug
-  const log = isDebugNumber ? logger : { info: () => {}, warn: () => {}, error: logger.error };
+  // Solo logear si es el número de debug - DESACTIVADO temporalmente para debugging agent
+  const log = { info: () => {}, warn: () => {}, error: logger.error };
 
-  log.info('📱 WHATSAPP WEBHOOK RECEIVED', {
-    instance: req.body?.instance,
-    event: req.body?.event,
-    remoteJid: req.body?.data?.key?.remoteJid,
-    fromMe: req.body?.data?.key?.fromMe,
-    messageType: req.body?.data?.messageType
-  });
+  // log.info('📱 WHATSAPP WEBHOOK RECEIVED', {
+  //   instance: req.body?.instance,
+  //   event: req.body?.event,
+  //   remoteJid: req.body?.data?.key?.remoteJid,
+  //   fromMe: req.body?.data?.key?.fromMe,
+  //   messageType: req.body?.data?.messageType
+  // });
 
   try {
     // Validar payload
-    log.info('🔍 Step 1: Validating payload...');
+    // log.info('🔍 Step 1: Validating payload...');
     const validation = validateWhatsAppPayload(req.body);
     if (!validation.valid) {
       log.warn('❌ Invalid WhatsApp payload', { reason: validation.reason || validation.missing });
