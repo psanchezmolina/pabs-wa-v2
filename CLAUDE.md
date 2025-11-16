@@ -307,6 +307,7 @@ logBetaUsage(client, 'feature-name', { metadata: 'value' });
 - **Texto:** Usar directamente
 - **Audio:** Transcribir con Whisper → `"audio: {text}"` (fallback: `"🎤 [audio no procesado]"`)
 - **Imagen:** Analizar con Vision → `"descripcion imagen: {text}"` (fallback: `"🖼️ [imagen no procesada]"`)
+- **MP4:** Intenta Whisper (IG/FB audios) → Si falla, placeholder video
 - **Video:** Formato básico → `"🎥 [video] - caption"`
 - **Document:** Formato básico → `"📎 [filename] - caption"`
 - **Location:** Formato básico → `"📍 [ubicación]: nombre (lat, lng)"`

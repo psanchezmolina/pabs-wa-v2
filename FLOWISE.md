@@ -317,21 +317,28 @@ pushMessage('contact123', 'SMS', 'cómo estás?');
 **Flujo:**
 1. Descarga archivo desde URL (axios)
 2. Convierte a base64
-3. Detecta tipo por `Content-Type`
+3. Detecta tipo por `Content-Type` + extensión de archivo
 4. **Usa `mediaHelper.*` para procesar** (DRY)
 
+**Detección inteligente de MP4:**
+- Instagram/FB envían audios como `video/mp4`
+- **Solución:** Intenta Whisper primero en `.mp4`
+  - Si transcribe exitosamente → Era audio ✅
+  - Si Whisper falla → Es video real, usa placeholder
+
 **Tipos soportados:**
-- **Audio** → `mediaHelper.processAudioToText()` → Whisper
-- **Imagen** → `mediaHelper.processImageToText()` → Vision
-- **Video** → `mediaHelper.formatOtherMediaType('video')`
-- **Otro** → `mediaHelper.formatOtherMediaType('unknown')`
+- **Audio** (`.ogg`, `.m4a`, `.mp3`) → Whisper
+- **MP4** → Intenta Whisper → Si falla, placeholder video
+- **Imagen** (`.jpg`, `.png`, `.jpeg`) → Vision
+- **Video** (otros formatos) → Placeholder
+- **Otro** → Placeholder genérico
 
 **Funciones:**
-- `processAttachment(attachmentUrl)` → Download + procesar
+- `processAttachment(attachmentUrl)` → Download + detectar + procesar
 
 **Diferencia vs whatsapp.js:**
 - whatsapp.js: Evolution API → `getMediaBase64(messageId)` → helpers
-- mediaProcessor.js: URL directa → `axios.get(url)` → helpers
+- mediaProcessor.js: URL de GHL → `axios.get(url)` → helpers
 - Ambos usan los mismos helpers para procesamiento ✅
 
 ---
