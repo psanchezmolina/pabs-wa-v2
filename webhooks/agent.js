@@ -263,9 +263,8 @@ async function handleAgentWebhook(req, res) {
           hasParte3: !!parsed.parte3
         });
 
-        // Registrar respuestas en GHL
-        logger.info('🔍 Step 10: Registering responses in GHL...', {
-          conversationId,
+        // Enviar respuestas a GHL (que las enviará al canal correcto)
+        logger.info('🔍 Step 10: Sending responses via GHL...', {
           ghlContactId,
           canal
         });
@@ -273,26 +272,30 @@ async function handleAgentWebhook(req, res) {
         // Filtrar partes que existan
         const parts = [parsed.parte1, parsed.parte2, parsed.parte3].filter(Boolean);
 
-        // Registrar cada parte en GHL (dirección outbound = respuesta del agente)
+        // Enviar cada parte a GHL (se enviarán automáticamente al canal especificado)
         for (let i = 0; i < parts.length; i++) {
-          await ghlAPI.registerMessage(
+          await ghlAPI.sendMessage(
             client,
-            conversationId,
             ghlContactId,
             parts[i],
-            'outbound'
+            canal  // SMS, WhatsApp, IG, FB
           );
 
-          logger.info(`✅ Registered part ${i + 1}/${parts.length} in GHL`, {
-            conversationId,
+          logger.info(`✅ Sent part ${i + 1}/${parts.length} via GHL`, {
             ghlContactId,
             canal,
             length: parts[i].length
           });
+
+          // Delay entre mensajes para mantener orden (igual que n8n)
+          if (i < parts.length - 1) {
+            const delay = Math.min(Math.max(parts[i].length * 50, 2000), 10000);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            logger.info(`⏱️ Wait ${delay}ms before next part`);
+          }
         }
 
-        logger.info('✅ Step 10 COMPLETE: All responses registered in GHL', {
-          conversationId,
+        logger.info('✅ Step 10 COMPLETE: All responses sent via GHL', {
           ghlContactId,
           canal,
           totalParts: parts.length

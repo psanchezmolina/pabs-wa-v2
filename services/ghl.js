@@ -196,6 +196,22 @@ async function registerMessage(client, conversationId, contactId, message, direc
   });
 }
 
+/**
+ * Enviar mensaje a un contacto (crea y envía al canal especificado)
+ * Usa el mismo endpoint que n8n - crea conversación automáticamente si no existe
+ * @param {Object} client - Cliente de GHL
+ * @param {string} contactId - ID del contacto en GHL
+ * @param {string} message - Texto del mensaje a enviar
+ * @param {string} type - Tipo de canal (SMS, WhatsApp, etc.)
+ */
+async function sendMessage(client, contactId, message, type = 'SMS') {
+  await ghlRequest(client, 'POST', '/conversations/messages', {
+    type,
+    contactId,
+    message
+  });
+}
+
 async function updateMessageStatus(client, messageId, status, errorMessage = null) {
   const payload = {
     status,
@@ -257,6 +273,7 @@ module.exports = {
   searchConversation,
   createConversation,
   registerMessage,
+  sendMessage,
   updateMessageStatus,
   addTags
 };
