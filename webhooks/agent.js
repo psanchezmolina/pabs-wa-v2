@@ -87,16 +87,16 @@ async function handleAgentWebhook(req, res) {
     // Gestión de buffer
     logger.info('🔍 Step 4: Managing message buffer...', { contact_id, canal });
 
-    // Obtener o crear buffer
-    const buffer = agentBuffer.getOrCreateBuffer(contact_id, canal);
+    // Añadir mensaje al buffer (getBuffer crea automáticamente si no existe)
+    agentBuffer.pushMessage(contact_id, canal, processedMessage);
 
-    // Añadir mensaje al buffer
-    agentBuffer.appendMessage(contact_id, canal, processedMessage);
+    // Obtener buffer actualizado
+    const buffer = agentBuffer.getBuffer(contact_id, canal);
 
     logger.info('✅ Step 4 COMPLETE: Message added to buffer', {
       contact_id,
       canal,
-      bufferSize: buffer.messages.length
+      bufferSize: buffer.length
     });
 
     // Configurar debounce (7 segundos)
@@ -115,7 +115,7 @@ async function handleAgentWebhook(req, res) {
         // Obtener estado actual del buffer
         const currentBuffer = agentBuffer.getBuffer(contact_id, canal);
 
-        if (!currentBuffer || currentBuffer.messages.length === 0) {
+        if (!currentBuffer || currentBuffer.length === 0) {
           logger.warn('⚠️ Buffer empty or deleted, skipping processing', {
             contact_id,
             canal
@@ -124,8 +124,8 @@ async function handleAgentWebhook(req, res) {
         }
 
         // v1: Verificación simple - comparar cantidad de mensajes
-        const expectedCount = buffer.messages.length;
-        const actualCount = currentBuffer.messages.length;
+        const expectedCount = buffer.length;
+        const actualCount = currentBuffer.length;
 
         if (actualCount !== expectedCount) {
           logger.warn('⚠️ Buffer changed during debounce, discarding', {
@@ -210,13 +210,13 @@ async function handleAgentWebhook(req, res) {
         };
 
         // Unir todos los mensajes del buffer
-        const combinedMessages = currentBuffer.messages.join('\n');
+        const combinedMessages = currentBuffer.join('\n');
 
         logger.info('✅ Step 7 COMPLETE: Flowise request prepared', {
           ghlContactId,
           conversationId,
           canal,
-          messageCount: currentBuffer.messages.length,
+          messageCount: currentBuffer.length,
           combinedLength: combinedMessages.length,
           hasInfoCrm: !!startState.info_crm,
           hasInfoCrmAdicional: !!startState.info_crm_adicional,
