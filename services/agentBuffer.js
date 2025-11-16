@@ -1,5 +1,6 @@
 const NodeCache = require('node-cache');
 const logger = require('../utils/logger');
+const { notifyAdmin } = require('../utils/notifications');
 
 // Buffer de mensajes por contacto (10 min TTL, auto-expira)
 const messageBuffer = new NodeCache({
@@ -10,6 +11,9 @@ const messageBuffer = new NodeCache({
 
 // Timers de debouncing (Map porque necesitamos clearTimeout)
 const debounceTimers = new Map();
+
+// Límite de mensajes por buffer (prevenir abuse)
+const MAX_MESSAGES_PER_BUFFER = 7;
 
 /**
  * Agregar mensaje al buffer
@@ -22,6 +26,26 @@ function pushMessage(contactId, canal, messageText) {
 
   // Obtener buffer existente o crear nuevo
   const buffer = messageBuffer.get(key) || [];
+
+  // Verificar límite de mensajes
+  if (buffer.length >= MAX_MESSAGES_PER_BUFFER) {
+    logger.warn('⚠️ Buffer limit reached, ignoring new message', {
+      contactId,
+      canal,
+      bufferSize: buffer.length,
+      limit: MAX_MESSAGES_PER_BUFFER
+    });
+
+    notifyAdmin('Agent Buffer Limit Reached', {
+      contactId,
+      canal,
+      bufferSize: buffer.length,
+      limit: MAX_MESSAGES_PER_BUFFER,
+      message: 'Usuario enviando demasiados mensajes consecutivos'
+    }).catch(err => logger.error('Failed to notify admin', { error: err.message }));
+
+    return;  // No agregar más mensajes
+  }
 
   // Agregar mensaje
   buffer.push(messageText);

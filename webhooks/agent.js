@@ -164,10 +164,11 @@ async function handleAgentWebhook(req, res) {
     // Configurar debounce (7 segundos)
     logger.info('🔍 Step 5: Setting up debounce (7s)...', { contact_id, canal });
 
-    agentBuffer.setupDebounce(contact_id, canal, async () => {
-      // IMPORTANTE: Este callback se ejecuta de forma asíncrona
-      // Necesita su propio manejo de errores
-      try {
+    try {
+      agentBuffer.setupDebounce(contact_id, canal, async () => {
+        // IMPORTANTE: Este callback se ejecuta de forma asíncrona
+        // Necesita su propio manejo de errores
+        try {
         logger.info('⏰ Debounce fired, processing buffered messages...', {
           contact_id,
           canal,
@@ -399,13 +400,34 @@ async function handleAgentWebhook(req, res) {
         // Limpiar buffer en caso de error
         agentBuffer.clearBuffer(contact_id, canal);
       }
-    }, 7000);
+      }, 7000);
 
-    logger.info('✅ Step 5 COMPLETE: Debounce configured', {
-      contact_id,
-      canal,
-      delay: '7s'
-    });
+      logger.info('✅ Step 5 COMPLETE: Debounce configured', {
+        contact_id,
+        canal,
+        delay: '7s'
+      });
+
+    } catch (setupError) {
+      logger.error('❌ Failed to setup debounce', {
+        contact_id,
+        canal,
+        error: setupError.message,
+        stack: setupError.stack
+      });
+
+      await notifyAdmin('Debounce Setup Failed', {
+        contact_id,
+        canal,
+        location_id,
+        agente,
+        error: setupError.message,
+        stack: setupError.stack
+      });
+
+      // Limpiar buffer para evitar leaks
+      agentBuffer.clearBuffer(contact_id, canal);
+    }
 
     // Retornar 200 inmediatamente (procesamiento asíncrono)
     return res.status(200).json({

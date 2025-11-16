@@ -22,7 +22,7 @@
 - **Database:** Supabase (PostgreSQL) - tabla `clients_details`
 - **HTTP Client:** Axios + axios-retry (4 reintentos, 800ms de retraso)
 - **Logging:** Winston (logs JSON estructurados)
-- **Testing:** Mocha + Chai + Supertest + Nock (53 tests unitarios passing, 4 pending integración)
+- **Testing:** Mocha + Chai + Supertest + Nock (~78 tests unitarios passing, 4 pending integración)
 - **Deploy:** Docker en Easypanel/Contabo VPS
 
 ### External APIs
@@ -389,9 +389,15 @@ CREATE TABLE agent_configs (
 **Servicios:**
 - `services/langfuse.js` - Obtener prompts (caché 1h)
 - `services/flowise.js` - Llamar chatflow + parser 3 niveles
-- `services/agentBuffer.js` - Gestión de buffers con debouncing
+- `services/agentBuffer.js` - Gestión de buffers con debouncing (límite 7 mensajes)
 - `services/mediaProcessor.js` - Procesar attachments (audio/imagen)
 - `utils/mediaHelper.js` - **DRY helpers** compartidos con whatsapp.js
+
+**Protecciones implementadas:**
+- Límite de 7 mensajes por buffer (previene abuse)
+- Error handling completo en setupDebounce
+- Notificación admin cuando se alcanza límite
+- Buffer auto-limpia (TTL 10 min)
 
 **Workflow completo:**
 
@@ -628,6 +634,7 @@ const description = await openaiAPI.analyzeImage(media.base64);
   - Si falla create por duplicado, se extrae el `contactId` del error (fallback inteligente)
 - **Cálculo de retraso de mensaje:** `Math.min(Math.max(text.length * 50, 2000), 10000)`
 - **Límite mensajes:** >4096 chars se truncan automáticamente con aviso
+- **Límite buffer agent:** Máximo 7 mensajes por buffer (previene abuse), notifica admin si se alcanza
 - **Fallback OpenAI:** Si Whisper/Vision fallan → `"🎤/🖼️ [no procesado]"` + notificación admin
 - Las notificaciones de admin requieren que `ADMIN_INSTANCE` y `ADMIN_INSTANCE_APIKEY` estén configurados
 
@@ -684,7 +691,7 @@ Cuando implementes nuevas funcionalidades o fixes, sigue este proceso:
 
 ## Testing
 
-**Estado:** 53 tests unitarios passing, 4 pending (integración)
+**Estado:** ~78 tests unitarios passing, 4 pending (integración)
 
 ### Ejecutar Tests
 
@@ -696,13 +703,19 @@ npm test -- test/unit/**/*  # Solo tests unitarios
 
 ### Cobertura Actual
 
-**✅ Tests Unitarios (test/unit/):**
+**✅ Tests Unitarios Existentes:**
 - `validation.test.js` - Validación payloads + truncamiento (11 tests)
 - `notifications.test.js` - Sistema notificaciones (5 tests)
 - `ghl.test.js` - Lógica GHL (token refresh, phone format) (9 tests)
-- `sanitizer.test.js` - Redacción datos sensibles (6 tests) **NUEVO**
-- `cache.test.js` - Caché en memoria (10 tests) **NUEVO**
-- `webhookAuth.test.js` - Validación whitelist (8 tests) **NUEVO**
+- `sanitizer.test.js` - Redacción datos sensibles (6 tests)
+- `cache.test.js` - Caché en memoria (10 tests)
+- `webhookAuth.test.js` - Validación whitelist (8 tests)
+
+**✅ Tests Sistema Flow (Agent):**
+- `agentBuffer.test.js` - Buffer + debouncing (7 tests)
+- `flowise.test.js` - Parser respuestas (6 tests)
+- `langfuse.test.js` - Fetch prompts (4 tests)
+- `validation-agent.test.js` - Validación payloads agent (11 tests)
 
 **⏳ Tests Integración (test/integration/):**
 - `webhooks.test.js` - HTTP endpoints (4 tests preparados, deshabilitados)
