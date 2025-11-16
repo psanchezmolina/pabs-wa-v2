@@ -196,12 +196,16 @@ async function handleAgentWebhook(req, res) {
           }
         }
 
-        // Preparar startState para Flowise
+        // Preparar startState para Flowise (todo en snake_case)
         const startState = {
           contact_id: contact_id,
           conversation_id: conversationId,
           location_id: location_id,
           canal: canal,
+          info_crm: customData.info_crm || '',
+          info_crm_adicional: customData.info_crm_adicional || '',
+          resumen_llamadas: customData.resumen_llamadas || '',
+          recuento_llamadas: customData.recuento_llamadas || 0,
           prompt: prompt
         };
 
@@ -213,24 +217,40 @@ async function handleAgentWebhook(req, res) {
           conversationId,
           canal,
           messageCount: currentBuffer.messages.length,
-          combinedLength: combinedMessages.length
+          combinedLength: combinedMessages.length,
+          hasInfoCrm: !!startState.info_crm,
+          hasInfoCrmAdicional: !!startState.info_crm_adicional,
+          hasResumenLlamadas: !!startState.resumen_llamadas,
+          recuentoLlamadas: startState.recuento_llamadas
         });
 
         // Llamar a Flowise
         logger.info('🔍 Step 8: Calling Flowise API...', {
-          chatflow_id: agentConfig.chatflow_id,
+          agentName: agentConfig.agent_name,
           messagePreview: combinedMessages.substring(0, 100)
         });
 
-        const flowiseResponse = await flowiseAPI.callFlowise(
-          agentConfig.flowise_webhook,
-          agentConfig.chatflow_id,
+        // Preparar overrideConfig con startState
+        const overrideConfig = {
+          startState: Object.entries(startState).map(([key, value]) => ({
+            key,
+            value
+          }))
+        };
+
+        // Usar conversationId como sessionId
+        const sessionId = conversationId;
+
+        const flowiseResponse = await flowiseAPI.callFlowiseAgent(
+          agentConfig,
           combinedMessages,
-          startState
+          sessionId,
+          overrideConfig
         );
 
         logger.info('✅ Step 8 COMPLETE: Flowise response received', {
-          chatflow_id: agentConfig.chatflow_id
+          agentName: agentConfig.agent_name,
+          sessionId
         });
 
         // Parsear respuesta (3-level fallback)

@@ -111,7 +111,7 @@ VALUES (
     "message_body": "hola kevin, qué tal?",
     "message_attachment": "https://...",
     "agente": "agente-roi",
-    "info_crm": "nombre: Pablo Sánchez\nemail: hola@pabs.ai\ntelefono: +34660722687\ncontactId: GcwK4TcH5FfPfIu5MtjN\nEtiquetas: activar-ia",
+    "info_crm": "nombre: Pablo Sánchez\nemail: hola@pabs.ai\ntelefono: +34660722687\ncontact_id: GcwK4TcH5FfPfIu5MtjN\nEtiquetas: activar-ia",
     "info_crm_adicional": "Nivel: Pro\nTipo de Bici: Montaña\n¿Qué te gustaría mejorar?: Resistencia",
     "resumen_llamadas": "Usuario preguntó sobre precios del curso avanzado",
     "recuento_llamadas": 3
@@ -221,24 +221,30 @@ LANGFUSE_BASE_URL=https://pabs-langfuse-web.r4isqy.easypanel.host
   "question": "hola kevin, qué tal?",
   "overrideConfig": {
     "startState": [
-      { "key": "contactId", "value": "GcwK4TcH5FfPfIu5MtjN" },
-      { "key": "infoLeadCRM", "value": "nombre: Pablo..." },
-      { "key": "infoLeadCRMAdicional", "value": "Nivel: Pro..." },
-      { "key": "resumenLlamadas", "value": "Usuario preguntó..." },
-      { "key": "recuentoLlamadas", "value": 3 },
+      { "key": "contact_id", "value": "GcwK4TcH5FfPfIu5MtjN" },
+      { "key": "conversation_id", "value": "conv_xxx" },
+      { "key": "location_id", "value": "jWmwy7nMqnsXQPdZdSW8" },
+      { "key": "canal", "value": "SMS" },
+      { "key": "info_crm", "value": "nombre: Pablo..." },
+      { "key": "info_crm_adicional", "value": "Nivel: Pro..." },
+      { "key": "resumen_llamadas", "value": "Usuario preguntó..." },
+      { "key": "recuento_llamadas", "value": 3 },
       { "key": "prompt", "value": "Eres un asistente experto..." }
     ]
   }
 }
 ```
 
-**StartState siempre incluye (aunque estén vacíos):**
-- `contactId` (string) - REQUERIDO
-- `infoLeadCRM` (string) - Contexto estándar (puede estar vacío)
-- `infoLeadCRMAdicional` (string) - Contexto custom (puede estar vacío)
-- `resumenLlamadas` (string) - Resumen de llamadas previas (puede estar vacío)
-- `recuentoLlamadas` (number) - Número de llamadas (puede ser 0)
-- `prompt` (string) - Prompt de Langfuse (REQUERIDO)
+**StartState siempre incluye (todo en snake_case):**
+- `contact_id` (string) - REQUERIDO - ID del contacto en GHL
+- `conversation_id` (string) - REQUERIDO - ID de la conversación en GHL
+- `location_id` (string) - REQUERIDO - ID de la ubicación en GHL
+- `canal` (string) - REQUERIDO - Canal del mensaje: "SMS", "IG", "FB"
+- `info_crm` (string) - Contexto estándar del contacto (puede estar vacío)
+- `info_crm_adicional` (string) - Contexto custom adicional (puede estar vacío)
+- `resumen_llamadas` (string) - Resumen de llamadas previas (puede estar vacío)
+- `recuento_llamadas` (number) - Número de llamadas (puede ser 0)
+- `prompt` (string) - REQUERIDO - Prompt dinámico desde Langfuse
 
 **Respuesta de Flowise:**
 ```json

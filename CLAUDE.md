@@ -167,12 +167,14 @@ N8N_AUTH_HEADER=Bearer xxx
 - `id` (SERIAL PRIMARY KEY)
 - `location_id` (VARCHAR NOT NULL) - Identificador de ubicación GHL
 - `agent_name` (VARCHAR NOT NULL) - Nombre del agente (ej: "agente-roi")
-- `flowise_webhook` (VARCHAR NOT NULL) - URL completa del webhook de Flowise
-- `chatflow_id` (VARCHAR NOT NULL) - ID del chatflow en Flowise
-- `created_at` (TIMESTAMP DEFAULT NOW())
-- `updated_at` (TIMESTAMP DEFAULT NOW())
+- `flowise_webhook_url` (TEXT NOT NULL) - URL completa del webhook de Flowise
+- `flowise_api_key` (TEXT) - API key de Flowise (opcional, ej: "Bearer xxx")
+- `created_at` (TIMESTAMPTZ DEFAULT NOW())
+- `updated_at` (TIMESTAMPTZ DEFAULT NOW())
 
-**Constraints:** `UNIQUE(location_id, agent_name)`
+**Constraints:**
+- `UNIQUE(location_id, agent_name)`
+- `FOREIGN KEY (location_id) REFERENCES clients_details(location_id) ON DELETE CASCADE`
 
 **Propósito:** Configuración de agentes conversacionales con IA para el sistema beta de agentes.
 
