@@ -35,6 +35,9 @@ async function processAttachment(attachmentUrl) {
       attachmentUrl: attachmentUrl.substring(0, 100)
     };
 
+    // Detectar extensión del archivo desde la URL
+    const fileExtension = attachmentUrl.split('.').pop().toLowerCase().split('?')[0];
+
     // Procesar según tipo usando helpers compartidos
     if (contentType.startsWith('audio/')) {
       return await mediaHelper.processAudioToText(base64, contentType, context);
@@ -42,12 +45,31 @@ async function processAttachment(attachmentUrl) {
     } else if (contentType.startsWith('image/')) {
       return await mediaHelper.processImageToText(base64, '', context);
 
-    } else if (contentType.startsWith('video/')) {
-      logger.info('🎥 Video detected, returning placeholder');
-      return mediaHelper.formatOtherMediaType('video');
+    } else if (contentType.startsWith('video/') || fileExtension === 'mp4') {
+      // Instagram/FB envían audios como video/mp4 - intentar transcribir primero
+      if (fileExtension === 'mp4') {
+        logger.info('🎬 MP4 detected, attempting Whisper transcription (could be audio or video)');
+
+        try {
+          // Intentar transcribir con Whisper
+          const transcription = await mediaHelper.processAudioToText(base64, 'audio/mp4', context);
+          logger.info('✅ MP4 transcribed successfully (was audio)');
+          return transcription;
+        } catch (whisperError) {
+          // Si Whisper falla, es un video real
+          logger.info('🎥 MP4 transcription failed, treating as video', {
+            error: whisperError.message
+          });
+          return mediaHelper.formatOtherMediaType('video');
+        }
+      } else {
+        // Otros formatos de video (no mp4)
+        logger.info('🎥 Video detected, returning placeholder');
+        return mediaHelper.formatOtherMediaType('video');
+      }
 
     } else {
-      logger.warn('⚠️ Unsupported attachment type', { contentType });
+      logger.warn('⚠️ Unsupported attachment type', { contentType, fileExtension });
       return mediaHelper.formatOtherMediaType('unknown');
     }
 
