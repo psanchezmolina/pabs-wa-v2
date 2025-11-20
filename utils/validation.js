@@ -116,9 +116,9 @@ function validateAgentPayload(body) {
     return { valid: false, missing: 'customData.agente' };
   }
 
-  if (!body.message || !body.message.type) {
-    return { valid: false, missing: 'message.type' };
-  }
+  // message.type es opcional - puede venir de webhooks de inicio de conversación
+  // Si no existe, se derivará de contact_source en el handler
+  // No requerimos message.type para soportar triggers manuales desde workflows
 
   return { valid: true };
 }

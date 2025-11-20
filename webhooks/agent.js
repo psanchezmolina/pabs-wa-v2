@@ -43,7 +43,7 @@ async function handleAgentWebhook(req, res) {
     const contact_id = req.body.contact_id;
     const location_id = req.body.location_id || req.body.location?.id;
     const customData = req.body.customData;
-    const message = req.body.message;
+    const message = req.body.message || {};  // Default a objeto vacío si no existe
     const { message_body, agente } = customData;
 
     // Extraer tags (puede venir como string o array)
@@ -55,9 +55,11 @@ async function handleAgentWebhook(req, res) {
       18: 'IG',
       11: 'FB'
     };
-    const canal = typeof message.type === 'number'
-      ? (typeMap[message.type] || 'SMS')  // Fallback a SMS si no está en el map
-      : message.type;
+
+    // Derivar canal: si no hay message.type, siempre es SMS (webhooks de inicio)
+    const canal = message.type
+      ? (typeof message.type === 'number' ? typeMap[message.type] : message.type)
+      : 'SMS';  // Sin message.type = trigger manual = SMS
 
     // Cliente viene del middleware (ya validado)
     const client = req.client;
