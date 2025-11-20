@@ -426,11 +426,17 @@ CREATE TABLE agent_configs (
     "agente": "agente-roi"
   },
   "message": {
-    "type": "SMS",  // o "IG", "FB"
+    "type": "SMS",  // o "IG", "FB" - OPCIONAL (ver nota abajo)
     "attachments": ["url1", "url2"]
   }
 }
 ```
+
+**Nota sobre `message.type`:**
+- `message.type` es **opcional** - útil para webhooks de inicio de conversación desde workflows
+- Si `message.type` **existe**: usa el valor (puede ser string "SMS"/"IG"/"FB" o número 20/18/11)
+- Si `message.type` **NO existe**: canal por defecto = **SMS**
+- Webhooks de trigger manual (inicio conversación) típicamente no incluyen `message.type`
 
 **Flowise payload completo:**
 
@@ -478,6 +484,7 @@ WHERE location_id = 'jWmwy7nMqnsXQPdZdSW8';
 - `services/langfuse.js` recibe keys como parámetros: `getPrompt(agentName, publicKey, secretKey)`
 - Caché usa clave combinada `publicKey:agentName` para evitar conflictos entre clientes
 - **sessionId en Flowise:** Se pasa dentro de `overrideConfig.sessionId` (usa `conversationId` de GHL) para mantener memoria de conversación
+- **message.type opcional:** Si no existe en payload, canal por defecto = SMS (útil para triggers manuales)
 - Media helpers en `utils/mediaHelper.js` son **DRY** - compartidos con whatsapp.js
 - Respuestas se registran en GHL (no se envían directamente via WhatsApp)
 - GHL maneja el envío al canal correcto (SMS, IG, FB, WhatsApp)
