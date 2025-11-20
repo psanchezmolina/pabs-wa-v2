@@ -22,6 +22,13 @@ async function handleAgentWebhook(req, res) {
   logger.info('🤖 AGENT WEBHOOK RECEIVED', initialLog);
   console.log('🤖 AGENT WEBHOOK RECEIVED (console.log):', JSON.stringify(initialLog, null, 2));
 
+  // 🔍 DEBUG COMPLETO: Ver payload exacto que llega desde el webhook
+  console.log('🔍 ========================================');
+  console.log('🔍 FULL PAYLOAD RECEIVED:');
+  console.log(JSON.stringify(req.body, null, 2));
+  console.log('🔍 PAYLOAD KEYS:', Object.keys(req.body));
+  console.log('🔍 ========================================');
+
   try {
     // Validar payload
     logger.info('🔍 Step 1: Validating payload...');
