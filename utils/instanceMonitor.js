@@ -14,6 +14,9 @@ const supabase = createClient(config.SUPABASE_URL, config.SUPABASE_KEY);
 // Tracking de estados previos para notificar solo en cambios
 const previousStates = new Map(); // Key: instanceName, Value: { connected: boolean, timestamp: Date }
 
+// Flag para distinguir el check inicial (solo informativo) de los checks posteriores
+let isFirstCheck = true;
+
 async function checkAllInstances() {
   logger.info('🔍 Starting instance connection check...');
 
@@ -68,16 +71,14 @@ async function checkAllInstances() {
       const previous = previousStates.get(result.instanceName);
 
       if (!previous) {
-        // Primera vez que checkeamos esta instancia
+        // Primera vez que checkeamos esta instancia - solo registrar estado
         previousStates.set(result.instanceName, {
           connected: result.connected,
           timestamp: new Date()
         });
 
-        // Si está desconectada desde el inicio, notificar
-        if (!result.connected) {
-          newlyDisconnected.push({ ...result, locationIds: uniqueInstances.get(result.instanceName).locationIds });
-        }
+        // En el primer check (inicio del servidor), NO intentar auto-restart
+        // Solo registramos el estado inicial para detectar cambios futuros
       } else {
         // Ya la habíamos checkeado antes
         if (previous.connected && !result.connected) {
@@ -104,10 +105,46 @@ async function checkAllInstances() {
       connected: connected.length,
       disconnected: disconnected.length,
       newlyDisconnected: newlyDisconnected.length,
-      reconnected: reconnected.length
+      reconnected: reconnected.length,
+      isFirstCheck
     });
 
-    // Intentar auto-restart para NUEVAS desconexiones
+    // En el PRIMER CHECK (inicio del servidor): solo resumen informativo
+    if (isFirstCheck) {
+      isFirstCheck = false; // Marcar que ya pasó el primer check
+
+      if (disconnected.length > 0) {
+        // Notificar resumen de instancias desconectadas (sin intentar auto-restart)
+        const disconnectedWithLocations = disconnected.map(d => ({
+          ...d,
+          locationIds: uniqueInstances.get(d.instanceName).locationIds
+        }));
+
+        await notifyAdmin('Resumen Inicial - Instancias WhatsApp', {
+          error: `${connected.length} conectadas, ${disconnected.length} desconectadas`,
+          endpoint: 'Instance Monitor (Inicio)',
+          instance_name: disconnected.map(d => d.instanceName).join(', '),
+          details: formatInitialSummary(connected, disconnectedWithLocations)
+        });
+      } else {
+        logger.info('✅ All instances connected on startup', {
+          count: connected.length
+        });
+      }
+
+      // No intentar auto-restart en el primer check
+      return {
+        total: results.length,
+        connected: connected.length,
+        disconnected: disconnected.length,
+        newlyDisconnected: 0,
+        reconnected: 0,
+        results,
+        isFirstCheck: true
+      };
+    }
+
+    // En CHECKS POSTERIORES: detectar cambios y auto-restart
     if (newlyDisconnected.length > 0) {
       logger.info('Attempting auto-restart for newly disconnected instances', {
         count: newlyDisconnected.length,
@@ -341,6 +378,36 @@ function formatQRRequiredAlert(instanceName, locationIds, error) {
   message += '   • Acceder al panel de Evolution API\n';
   message += '   • Escanear código QR con WhatsApp\n';
   message += '   • Los mensajes pendientes se enviarán al reconectar\n';
+  return message;
+}
+
+function formatInitialSummary(connected, disconnected) {
+  const timestamp = new Date().toLocaleString('es-ES', { timeZone: 'Europe/Madrid' });
+  let message = '📊 *Resumen Inicial - Servidor Iniciado*\n\n';
+  message += `⏰ Hora: ${timestamp}\n`;
+  message += `✅ Conectadas: *${connected.length}*\n`;
+  message += `❌ Desconectadas: *${disconnected.length}*\n\n`;
+
+  if (connected.length > 0) {
+    message += '━━━━━━━━━━━━━━━━━━━\n';
+    message += '🟢 *Instancias Operativas:*\n';
+    connected.forEach(inst => {
+      message += `   • ${inst.instanceName}\n`;
+    });
+    message += '\n';
+  }
+
+  if (disconnected.length > 0) {
+    message += '━━━━━━━━━━━━━━━━━━━\n';
+    message += '🔴 *Requieren Atención:*\n';
+    disconnected.forEach(inst => {
+      message += `   • *${inst.instanceName}* (${inst.state})\n`;
+      message += `     └ Clientes: ${inst.locationIds.length}\n`;
+    });
+    message += '\n';
+    message += '💡 Estas instancias necesitan escanear QR para conectarse.\n';
+  }
+
   return message;
 }
 
