@@ -1,8 +1,9 @@
-const axios = require('axios');
 const config = require('../config');
 const logger = require('./logger');
 const { notifyAdmin } = require('./notifications');
 const { createClient } = require('@supabase/supabase-js');
+const evolutionAPI = require('../services/evolution');
+const messageCache = require('../services/messageCache');
 
 const supabase = createClient(config.SUPABASE_URL, config.SUPABASE_KEY);
 
@@ -12,42 +13,6 @@ const supabase = createClient(config.SUPABASE_URL, config.SUPABASE_KEY);
 
 // Tracking de estados previos para notificar solo en cambios
 const previousStates = new Map(); // Key: instanceName, Value: { connected: boolean, timestamp: Date }
-
-async function checkInstanceConnection(instanceName, apiKey) {
-  try {
-    const response = await axios.get(
-      `${config.EVOLUTION_BASE_URL}/instance/connectionState/${instanceName}`,
-      {
-        headers: { apikey: apiKey },
-        timeout: 5000
-      }
-    );
-
-    // El estado viene en response.data.instance.state o response.data.state
-    const state = response.data?.instance?.state || response.data?.state;
-
-    return {
-      instanceName,
-      connected: state === 'open',
-      state: state || 'unknown',
-      error: null
-    };
-
-  } catch (error) {
-    logger.error('Failed to check instance connection', {
-      instanceName,
-      error: error.message,
-      status: error.response?.status
-    });
-
-    return {
-      instanceName,
-      connected: false,
-      state: 'error',
-      error: error.message
-    };
-  }
-}
 
 async function checkAllInstances() {
   logger.info('🔍 Starting instance connection check...');
@@ -87,11 +52,12 @@ async function checkAllInstances() {
       instances: Array.from(uniqueInstances.keys())
     });
 
-    // Verificar cada instancia
+    // Verificar cada instancia (usando evolutionAPI.checkInstanceConnection)
     const results = await Promise.all(
-      Array.from(uniqueInstances.entries()).map(([name, data]) =>
-        checkInstanceConnection(name, data.apiKey)
-      )
+      Array.from(uniqueInstances.entries()).map(async ([name, data]) => {
+        const result = await evolutionAPI.checkInstanceConnection(name, data.apiKey);
+        return { ...result, instanceName: name }; // Añadir instanceName al resultado
+      })
     );
 
     // Detectar CAMBIOS de estado (no solo desconectados)
@@ -159,7 +125,15 @@ async function checkAllInstances() {
         instance_name: reconnected.map(r => r.instanceName).join(', '),
         details: formatConnectedAlert(reconnected)
       });
+
+      // Procesar mensajes pendientes para instancias reconectadas
+      for (const inst of reconnected) {
+        await processQueuedMessages(inst.instanceName, uniqueInstances.get(inst.instanceName).apiKey);
+      }
     }
+
+    // Procesar mensajes pendientes que estén listos para retry (independiente de reconexión)
+    await processAllPendingMessages();
 
     return {
       total: results.length,
@@ -185,6 +159,109 @@ async function checkAllInstances() {
       statusText: error.response?.statusText,
       responseData: error.response?.data
     });
+  }
+}
+
+// ============================================================================
+// MESSAGE QUEUE PROCESSOR - Procesa mensajes pendientes
+// ============================================================================
+
+/**
+ * Procesa los mensajes pendientes de una instancia específica
+ */
+async function processQueuedMessages(instanceName, apiKey) {
+  const messages = messageCache.getMessagesReadyForRetry(instanceName);
+
+  if (messages.length === 0) {
+    return { processed: 0, success: 0, failed: 0 };
+  }
+
+  logger.info('Processing queued messages for reconnected instance', {
+    instanceName,
+    messageCount: messages.length
+  });
+
+  let success = 0;
+  let failed = 0;
+
+  for (const msg of messages) {
+    try {
+      await evolutionAPI.sendText(instanceName, apiKey, msg.waNumber, msg.messageText);
+      messageCache.updateMessageRetry(instanceName, msg.messageId, true);
+      success++;
+
+      logger.info('Queued message sent successfully', {
+        instanceName,
+        messageId: msg.messageId,
+        contactPhone: msg.contactPhone
+      });
+    } catch (error) {
+      messageCache.updateMessageRetry(instanceName, msg.messageId, false);
+      failed++;
+
+      logger.error('Failed to send queued message', {
+        instanceName,
+        messageId: msg.messageId,
+        error: error.message
+      });
+    }
+
+    // Pequeño delay entre mensajes para no saturar
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+
+  if (success > 0 || failed > 0) {
+    logger.info('Queued messages processing completed', {
+      instanceName,
+      total: messages.length,
+      success,
+      failed
+    });
+  }
+
+  return { processed: messages.length, success, failed };
+}
+
+/**
+ * Procesa mensajes pendientes de todas las instancias
+ */
+async function processAllPendingMessages() {
+  const instances = messageCache.getInstancesWithPendingMessages();
+
+  if (instances.length === 0) {
+    return;
+  }
+
+  logger.info('Processing pending messages for all instances', {
+    instancesWithPending: instances.length
+  });
+
+  // Obtener API keys de la BD
+  const { data: clientsData, error } = await supabase
+    .from('clients_details')
+    .select('instance_name, instance_apikey')
+    .in('instance_name', instances);
+
+  if (error) {
+    logger.error('Failed to fetch API keys for message processing', { error: error.message });
+    return;
+  }
+
+  const apiKeys = new Map();
+  clientsData?.forEach(c => apiKeys.set(c.instance_name, c.instance_apikey));
+
+  for (const instanceName of instances) {
+    const apiKey = apiKeys.get(instanceName);
+    if (!apiKey) {
+      logger.warn('No API key found for instance', { instanceName });
+      continue;
+    }
+
+    // Verificar si la instancia está conectada antes de procesar
+    const state = await evolutionAPI.checkInstanceConnection(instanceName, apiKey);
+    if (state.connected) {
+      await processQueuedMessages(instanceName, apiKey);
+    }
   }
 }
 
@@ -268,6 +345,5 @@ function startMonitoring(intervalHours = 0.5) {
 
 module.exports = {
   checkAllInstances,
-  checkInstanceConnection,
   startMonitoring
 };

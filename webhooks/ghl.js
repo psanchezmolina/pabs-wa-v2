@@ -4,6 +4,7 @@ const { validateGHLPayload, splitMessage } = require('../utils/validation');
 const { getClientByLocationId } = require('../services/supabase');
 const ghlAPI = require('../services/ghl');
 const evolutionAPI = require('../services/evolution');
+const messageCache = require('../services/messageCache');
 
 async function handleGHLWebhook(req, res) {
   // Log COMPLETO del webhook para debugging
@@ -129,34 +130,62 @@ async function handleGHLWebhook(req, res) {
         stack: sendError.stack
       });
 
-      // Verificar si tiene WhatsApp
-      // logger.info('Checking if number has WhatsApp', { contactPhone });
+      // PASO 1: Verificar estado de la instancia ANTES de verificar número
+      const instanceState = await evolutionAPI.checkInstanceConnection(
+        client.instance_name,
+        client.instance_apikey
+      );
 
+      // Si la instancia está caída, encolar mensaje para retry
+      if (!instanceState.connected) {
+        logger.warn('Instance disconnected - queueing message for retry', {
+          instanceName: client.instance_name,
+          instanceState: instanceState.state,
+          contactPhone
+        });
+
+        // Encolar mensaje
+        messageCache.enqueueMessage({
+          locationId,
+          instanceName: client.instance_name,
+          instanceApiKey: client.instance_apikey,
+          contactId,
+          messageId,
+          messageText,
+          waNumber,
+          contactPhone
+        });
+
+        // Notificar admin sobre instancia caída
+        await notifyAdmin('Instance disconnected - message queued', {
+          location_id: locationId,
+          instance_name: client.instance_name,
+          instance_state: instanceState.state,
+          endpoint: '/webhook/ghl',
+          contactId,
+          phone: contactPhone,
+          queueStats: messageCache.getStats()
+        });
+
+        return res.status(503).json({
+          success: false,
+          queued: true,
+          message: 'Instance disconnected - message queued for retry'
+        });
+      }
+
+      // PASO 2: Instancia conectada, verificar si tiene WhatsApp
       const hasWhatsApp = await evolutionAPI.checkWhatsAppNumber(
         client.instance_name,
         client.instance_apikey,
         contactPhone
       );
 
-      // logger.info('WhatsApp verification result', {
-      //   contactPhone,
-      //   hasWhatsApp
-      // });
-
+      // CASO 1: hasWhatsApp === false → No tiene WhatsApp (confirmado)
       if (hasWhatsApp === false) {
-        // logger.info('Number does not have WhatsApp - notifying in GHL conversation', {
-        //   contactId
-        // });
-
         // Buscar conversación
         const conversationSearch = await ghlAPI.searchConversation(client, contactId);
         const conversationId = conversationSearch.conversations?.[0]?.id;
-
-        // logger.info('Conversation search result', {
-        //   contactId,
-        //   conversationId,
-        //   totalConversations: conversationSearch.total
-        // });
 
         if (conversationId) {
           await ghlAPI.registerMessage(
@@ -166,8 +195,6 @@ async function handleGHLWebhook(req, res) {
             'NOTA: El contacto no tiene WhatsApp',
             'outbound'
           );
-
-          // logger.info('✅ Notification sent to GHL conversation (outbound)', { conversationId });
         } else {
           logger.warn('No conversation found to send notification', { contactId });
         }
@@ -175,7 +202,6 @@ async function handleGHLWebhook(req, res) {
         // Añadir tag "no-wa" al contacto
         try {
           await ghlAPI.addTags(client, contactId, ['no-wa']);
-          // logger.info('✅ Tag "no-wa" added to contact', { contactId });
         } catch (tagError) {
           logger.error('❌ Failed to add tag to contact', {
             contactId,
@@ -183,19 +209,48 @@ async function handleGHLWebhook(req, res) {
           });
         }
 
-        // Caso normal de contacto sin WhatsApp - NO notificar al admin
-        // logger.info('✅ Contact without WhatsApp handled successfully', {
-        //   contactId,
-        //   phone: contactPhone
-        // });
-
         return res.status(200).json({
           success: true,
           message: 'Contact does not have WhatsApp - registered in GHL and tagged'
         });
       }
 
-      // Si NO es un caso de "sin WhatsApp", entonces SÍ notificar al admin
+      // CASO 2: hasWhatsApp === null → No se pudo verificar (API error)
+      if (hasWhatsApp === null) {
+        logger.warn('Could not verify WhatsApp number - queueing message', {
+          contactPhone,
+          instanceName: client.instance_name
+        });
+
+        // Encolar mensaje por si acaso
+        messageCache.enqueueMessage({
+          locationId,
+          instanceName: client.instance_name,
+          instanceApiKey: client.instance_apikey,
+          contactId,
+          messageId,
+          messageText,
+          waNumber,
+          contactPhone
+        });
+
+        await notifyAdmin('Failed to verify WhatsApp number - message queued', {
+          location_id: locationId,
+          error: sendError.message,
+          endpoint: '/webhook/ghl',
+          contactId,
+          phone: contactPhone,
+          note: 'No se pudo verificar si tiene WhatsApp, mensaje encolado para retry'
+        });
+
+        return res.status(500).json({
+          success: false,
+          queued: true,
+          message: 'Could not verify WhatsApp - message queued for retry'
+        });
+      }
+
+      // CASO 3: hasWhatsApp === true → Tiene WhatsApp pero falló el envío
       await notifyAdmin('Failed to send WhatsApp message', {
         location_id: locationId,
         error: sendError.message,
@@ -204,7 +259,7 @@ async function handleGHLWebhook(req, res) {
         contactId,
         messageId,
         phone: contactPhone,
-        // Datos de API si es error de axios
+        hasWhatsApp: true,
         status: sendError.response?.status,
         statusText: sendError.response?.statusText,
         responseData: sendError.response?.data

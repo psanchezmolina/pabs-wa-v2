@@ -26,6 +26,52 @@ async function sendText(instanceName, apiKey, number, text) {
   return response.data;
 }
 
+/**
+ * Verifica el estado de conexión de una instancia
+ * @returns {Object} { connected: boolean, state: string, error: string|null }
+ */
+async function checkInstanceConnection(instanceName, apiKey) {
+  try {
+    const response = await axios.get(
+      `${config.EVOLUTION_BASE_URL}/instance/connectionState/${instanceName}`,
+      {
+        headers: { apikey: apiKey },
+        timeout: 5000
+      }
+    );
+
+    const state = response.data?.instance?.state || response.data?.state;
+
+    return {
+      connected: state === 'open',
+      state: state || 'unknown',
+      error: null
+    };
+  } catch (error) {
+    // Distinguir entre API caída vs instancia no encontrada
+    const isApiDown = error.code === 'ECONNREFUSED' ||
+                      error.code === 'ETIMEDOUT' ||
+                      error.code === 'ENOTFOUND';
+
+    logger.error('Failed to check instance connection', {
+      instanceName,
+      error: error.message,
+      status: error.response?.status,
+      isApiDown
+    });
+
+    return {
+      connected: false,
+      state: isApiDown ? 'api_unreachable' : 'error',
+      error: error.message
+    };
+  }
+}
+
+/**
+ * Verifica si un número tiene WhatsApp
+ * @returns {boolean|null} true = tiene WA, false = no tiene WA, null = no se pudo verificar
+ */
 async function checkWhatsAppNumber(instanceName, apiKey, phone) {
   const cleanPhone = phone.replace(/^\+/, '');
 
@@ -57,8 +103,14 @@ async function checkWhatsAppNumber(instanceName, apiKey, phone) {
 
     return hasWhatsApp;
   } catch (error) {
-    logger.warn('Failed to check WhatsApp number', { phone, error: error.message });
-    return false; // Asumir que no tiene WhatsApp si falla
+    logger.warn('Failed to check WhatsApp number', {
+      phone,
+      error: error.message,
+      status: error.response?.status
+    });
+
+    // Retornar null para indicar que no se pudo verificar (vs false = no tiene WA)
+    return null;
   }
 }
 
@@ -88,6 +140,7 @@ async function getMediaBase64(instanceName, apiKey, messageId) {
 
 module.exports = {
   sendText,
+  checkInstanceConnection,
   checkWhatsAppNumber,
   getMediaBase64
 };

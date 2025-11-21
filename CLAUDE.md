@@ -48,9 +48,10 @@
 ├── services/
 │   ├── supabase.js       # DB client + queries
 │   ├── ghl.js            # GHL API + OAuth auto-refresh + caché tokens
-│   ├── evolution.js      # Evolution API wrapper
+│   ├── evolution.js      # Evolution API wrapper + checkInstanceConnection
 │   ├── openai.js         # Whisper + Vision
 │   ├── cache.js          # Caché en memoria (tokens, contactos, conversaciones)
+│   ├── messageCache.js   # Cola de mensajes fallidos (8h TTL, retry automático)
 │   ├── langfuse.js       # Langfuse API client (beta)
 │   ├── flowise.js        # Flowise API client (beta)
 │   ├── agentBuffer.js    # Message buffering + debouncing (beta)
@@ -617,6 +618,13 @@ const description = await openaiAPI.analyzeImage(media.base64);
   - Se pierden al reiniciar servidor (esto es normal)
   - Primer mensaje después de reinicio es más lento, siguientes rápidos
   - Consumo memoria estimado: ~330KB para 150 clientes
+- **Cola de mensajes fallidos (`services/messageCache.js`):**
+  - Mensajes que fallan por instancia caída se encolan automáticamente (8h TTL)
+  - Retry automático: 5min, 10min, 20min, 40min, 1h (máx 5 intentos)
+  - Se procesan cuando: a) instancia se reconecta, b) cada 30min en monitor
+  - **Importante:** No marca contacto como "no-wa" si instancia está caída
+  - `checkWhatsAppNumber()` retorna `true`/`false`/`null` (null = no se pudo verificar)
+  - Cola se pierde al reiniciar servidor (volátil, no persistente)
 - **Timeout global de 15 segundos:**
   - Todas las llamadas a APIs externas tienen timeout de 15s
   - Si una API no responde en 15s → Error timeout
