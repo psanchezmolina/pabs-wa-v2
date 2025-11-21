@@ -66,7 +66,7 @@
 │   ├── webhookAuth.js    # Validación whitelist de webhooks
 │   ├── betaFeatures.js   # Beta feature flags helpers
 │   ├── mediaHelper.js    # DRY media processing helpers (shared)
-│   └── instanceMonitor.js # Monitor instancias (cada 30min)
+│   └── instanceMonitor.js # Monitor instancias + auto-restart (webhook + polling 2h)
 ├── public/                 # QR panel (DO NOT MODIFY)
 └── test/                   # Tests unitarios e integración
 ```
@@ -346,16 +346,23 @@ logBetaUsage(client, 'feature-name', { metadata: 'value' });
 
 **Triggers:** Token refresh failed, webhook errors, OpenAI failures, instancias desconectadas
 
-### 5. Monitor de Instancias
+### 5. Monitor de Instancias + Auto-Restart
 
-**Frecuencia:** Cada 30 minutos automáticamente
+**Detección Híbrida:**
+- **Primario:** Webhook `CONNECTION_UPDATE` (tiempo real, 0 requests)
+- **Backup:** Polling cada 2 horas (`/instance/connectionState`)
+
+**Auto-Restart Automático:**
+- Al detectar desconexión → Intenta `/instance/restart` (usa sesión existente)
+- Si éxito → Notifica "Reconectada Automáticamente ✅" + procesa cola mensajes
+- Si falla → Notifica "Requiere QR ⚠️" con instrucciones
 
 **Funcionalidad:**
-- Verifica conexión de todas las instancias Evolution API (`/instance/connectionState`)
-- Detecta cambios de estado (desconexión/reconexión)
+- Detecta cambios de estado en tiempo real vía webhooks
+- Auto-reconexión sin intervención manual (si sesión válida)
+- Procesa cola de mensajes pendientes al reconectar
 - Notifica solo en cambios (no spam)
-- Agrupa por cliente afectado
-- Carga mínima: ~7,200 requests/día con 150 instancias (~0.08 req/s)
+- Carga mínima: ~1,800 requests/día con 150 instancias (polling cada 2h)
 
 ### 6. Agent System (Beta Feature)
 

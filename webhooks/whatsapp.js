@@ -6,8 +6,55 @@ const ghlAPI = require('../services/ghl');
 const evolutionAPI = require('../services/evolution');
 const mediaHelper = require('../utils/mediaHelper');
 const { getCachedContactId, setCachedContactId, getCachedConversationId, setCachedConversationId } = require('../services/cache');
+const { attemptAutoRestart, processQueuedMessages } = require('../utils/instanceMonitor');
 
 async function handleWhatsAppWebhook(req, res) {
+  // ============================================================================
+  // MANEJAR EVENTOS DE CONEXIÓN (CONNECTION_UPDATE) - Detección en tiempo real
+  // ============================================================================
+  const event = req.body?.event;
+  const instanceName = req.body?.instance;
+
+  if (event === 'connection.update') {
+    const state = req.body?.data?.state;
+
+    logger.info('Connection update received', { instanceName, state, event });
+
+    // Solo actuar en cambios de estado significativos
+    if (state === 'close') {
+      // Instancia desconectada - intentar auto-restart
+      logger.warn('Instance disconnected via webhook', { instanceName, state });
+
+      // Obtener cliente para API key
+      const client = await getClientByInstanceName(instanceName);
+      if (client) {
+        // attemptAutoRestart maneja notificaciones y cola de mensajes
+        await attemptAutoRestart(instanceName, client.instance_apikey, [client.location_id]);
+      }
+
+      return res.status(200).json({ success: true, handled: 'connection_close' });
+    }
+
+    if (state === 'open') {
+      // Instancia reconectada - procesar cola de mensajes
+      logger.info('Instance reconnected via webhook', { instanceName, state });
+
+      const client = await getClientByInstanceName(instanceName);
+      if (client) {
+        await processQueuedMessages(instanceName, client.instance_apikey);
+      }
+
+      return res.status(200).json({ success: true, handled: 'connection_open' });
+    }
+
+    // Otros estados (connecting) - solo log
+    return res.status(200).json({ success: true, handled: 'connection_update', state });
+  }
+
+  // ============================================================================
+  // MANEJAR MENSAJES (flujo normal)
+  // ============================================================================
+
   // Detectar si es el número de debug para logging
   const debugNumber = '34660722687@s.whatsapp.net';
   const isDebugNumber = req.body?.data?.key?.remoteJid === debugNumber;
@@ -15,17 +62,8 @@ async function handleWhatsAppWebhook(req, res) {
   // Solo logear si es el número de debug - DESACTIVADO temporalmente para debugging agent
   const log = { info: () => {}, warn: () => {}, error: logger.error };
 
-  // log.info('📱 WHATSAPP WEBHOOK RECEIVED', {
-  //   instance: req.body?.instance,
-  //   event: req.body?.event,
-  //   remoteJid: req.body?.data?.key?.remoteJid,
-  //   fromMe: req.body?.data?.key?.fromMe,
-  //   messageType: req.body?.data?.messageType
-  // });
-
   try {
     // Validar payload
-    // log.info('🔍 Step 1: Validating payload...');
     const validation = validateWhatsAppPayload(req.body);
     if (!validation.valid) {
       log.warn('❌ Invalid WhatsApp payload', { reason: validation.reason || validation.missing });

@@ -114,6 +114,52 @@ async function checkWhatsAppNumber(instanceName, apiKey, phone) {
   }
 }
 
+/**
+ * Reinicia una instancia usando credenciales de sesión existentes
+ * @returns {Object} { success: boolean, state: string, needsQR: boolean, error: string|null }
+ */
+async function restartInstance(instanceName, apiKey) {
+  try {
+    const response = await axios.put(
+      `${config.EVOLUTION_BASE_URL}/instance/restart/${instanceName}`,
+      {},
+      {
+        headers: { apikey: apiKey },
+        timeout: 15000 // Más tiempo porque restart puede tardar
+      }
+    );
+
+    const state = response.data?.instance?.state || response.data?.state;
+    const success = state === 'open';
+
+    logger.info('Instance restart attempt', {
+      instanceName,
+      state,
+      success
+    });
+
+    return {
+      success,
+      state: state || 'unknown',
+      needsQR: !success && state !== 'connecting',
+      error: null
+    };
+  } catch (error) {
+    logger.error('Failed to restart instance', {
+      instanceName,
+      error: error.message,
+      status: error.response?.status
+    });
+
+    return {
+      success: false,
+      state: 'error',
+      needsQR: true,
+      error: error.message
+    };
+  }
+}
+
 async function getMediaBase64(instanceName, apiKey, messageId) {
   const response = await withRetry(() =>
     axios.post(
@@ -142,5 +188,6 @@ module.exports = {
   sendText,
   checkInstanceConnection,
   checkWhatsAppNumber,
+  restartInstance,
   getMediaBase64
 };

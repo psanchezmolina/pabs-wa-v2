@@ -107,14 +107,18 @@ async function checkAllInstances() {
       reconnected: reconnected.length
     });
 
-    // Notificar solo NUEVAS desconexiones
+    // Intentar auto-restart para NUEVAS desconexiones
     if (newlyDisconnected.length > 0) {
-      await notifyAdmin('Instancias WhatsApp Desconectadas', {
-        error: `${newlyDisconnected.length} instancia(s) desconectada(s)`,
-        endpoint: 'Instance Monitor',
-        instance_name: newlyDisconnected.map(d => d.instanceName).join(', '),
-        details: formatDisconnectedAlert(newlyDisconnected)
+      logger.info('Attempting auto-restart for newly disconnected instances', {
+        count: newlyDisconnected.length,
+        instances: newlyDisconnected.map(d => d.instanceName)
       });
+
+      for (const inst of newlyDisconnected) {
+        const apiKey = uniqueInstances.get(inst.instanceName).apiKey;
+        // attemptAutoRestart ya maneja notificaciones (éxito o fallo)
+        await attemptAutoRestart(inst.instanceName, apiKey, inst.locationIds);
+      }
     }
 
     // Notificar conexiones (buenas noticias)
@@ -265,6 +269,81 @@ async function processAllPendingMessages() {
   }
 }
 
+/**
+ * Intenta reconectar automáticamente una instancia desconectada
+ * @param {string} instanceName - Nombre de la instancia
+ * @param {string} apiKey - API key de la instancia
+ * @param {Array} locationIds - Location IDs afectados (para notificaciones)
+ * @returns {Object} { success: boolean, needsQR: boolean }
+ */
+async function attemptAutoRestart(instanceName, apiKey, locationIds = []) {
+  logger.info('Attempting auto-restart for disconnected instance', { instanceName });
+
+  const result = await evolutionAPI.restartInstance(instanceName, apiKey);
+
+  if (result.success) {
+    // Reconexión exitosa
+    logger.info('Auto-restart successful', { instanceName, state: result.state });
+
+    // Notificar admin del éxito
+    await notifyAdmin('Instancia Reconectada Automáticamente ✅', {
+      instance_name: instanceName,
+      error: 'Reconexión automática exitosa',
+      endpoint: 'Auto-Restart',
+      details: formatAutoRestartSuccess(instanceName, locationIds)
+    });
+
+    // Procesar cola de mensajes pendientes
+    await processQueuedMessages(instanceName, apiKey);
+
+    return { success: true, needsQR: false };
+  }
+
+  // Reconexión falló - requiere QR
+  logger.warn('Auto-restart failed, QR scan required', {
+    instanceName,
+    state: result.state,
+    error: result.error
+  });
+
+  await notifyAdmin('Instancia Requiere QR ⚠️', {
+    instance_name: instanceName,
+    error: 'Reconexión automática falló - requiere escanear QR',
+    endpoint: 'Auto-Restart',
+    details: formatQRRequiredAlert(instanceName, locationIds, result.error)
+  });
+
+  return { success: false, needsQR: true };
+}
+
+function formatAutoRestartSuccess(instanceName, locationIds) {
+  const timestamp = new Date().toLocaleString('es-ES', { timeZone: 'Europe/Madrid' });
+  let message = '🟢 *Instancia Reconectada Automáticamente*\n\n';
+  message += `⏰ Hora: ${timestamp}\n`;
+  message += `📱 Instancia: *${instanceName}*\n`;
+  message += `👥 Clientes activos: *${locationIds.length}*\n\n`;
+  message += '✨ La instancia se reconectó usando credenciales de sesión existentes.\n';
+  message += '📤 Los mensajes pendientes se están procesando.\n';
+  return message;
+}
+
+function formatQRRequiredAlert(instanceName, locationIds, error) {
+  const timestamp = new Date().toLocaleString('es-ES', { timeZone: 'Europe/Madrid' });
+  let message = '🟠 *Instancia Requiere Escanear QR*\n\n';
+  message += `⏰ Hora: ${timestamp}\n`;
+  message += `📱 Instancia: *${instanceName}*\n`;
+  message += `👥 Clientes afectados: *${locationIds.length}*\n`;
+  if (error) {
+    message += `⚠️ Error: ${error}\n`;
+  }
+  message += '\n━━━━━━━━━━━━━━━━━━━\n\n';
+  message += '💡 *Acción requerida:*\n';
+  message += '   • Acceder al panel de Evolution API\n';
+  message += '   • Escanear código QR con WhatsApp\n';
+  message += '   • Los mensajes pendientes se enviarán al reconectar\n';
+  return message;
+}
+
 function formatDisconnectedAlert(disconnected) {
   const timestamp = new Date().toLocaleString('es-ES', { timeZone: 'Europe/Madrid' });
   let message = '🔴 *ALERTA: Instancias WhatsApp Desconectadas*\n\n';
@@ -345,5 +424,7 @@ function startMonitoring(intervalHours = 0.5) {
 
 module.exports = {
   checkAllInstances,
-  startMonitoring
+  startMonitoring,
+  attemptAutoRestart,
+  processQueuedMessages
 };
