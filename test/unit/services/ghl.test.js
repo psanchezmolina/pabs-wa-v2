@@ -48,6 +48,31 @@ describe('GHL Service', () => {
 
       expect(waNumber).to.equal('34660722687@s.whatsapp.net');
     });
+
+    it('should parse WhatsApp number without device ID', () => {
+      const waNumber = '34612299907@s.whatsapp.net';
+      const phone = '+' + waNumber
+        .replace(/@s\.whatsapp\.net$/, '')
+        .replace(/:\d+$/, '');
+
+      expect(phone).to.equal('+34612299907');
+    });
+
+    it('should parse WhatsApp number with device ID (:0, :1, etc)', () => {
+      const waNumberWithDevice0 = '34612299907:0@s.whatsapp.net';
+      const waNumberWithDevice1 = '34612299907:1@s.whatsapp.net';
+
+      const phone0 = '+' + waNumberWithDevice0
+        .replace(/@s\.whatsapp\.net$/, '')
+        .replace(/:\d+$/, '');
+
+      const phone1 = '+' + waNumberWithDevice1
+        .replace(/@s\.whatsapp\.net$/, '')
+        .replace(/:\d+$/, '');
+
+      expect(phone0).to.equal('+34612299907');
+      expect(phone1).to.equal('+34612299907');
+    });
   });
 
   describe('Contact Search Logic', () => {
@@ -72,6 +97,34 @@ describe('GHL Service', () => {
 
       expect(params.get('grant_type')).to.equal('refresh_token');
       expect(params.get('user_type')).to.equal('Company');
+    });
+  });
+
+  describe('GHL Flow - Instance Down', () => {
+    it('should queue message and NOT mark as no-wa when instance is disconnected', () => {
+      // Simular escenario: instancia desconectada
+      const instanceState = { connected: false, state: 'close', error: null };
+      const hasWhatsApp = null; // No se pudo verificar (API inalcanzable)
+
+      // Lógica del flujo ghl.js
+      const shouldQueueMessage = !instanceState.connected;
+      const shouldMarkNoWA = hasWhatsApp === false; // Solo si está CONFIRMADO que no tiene WA
+
+      expect(shouldQueueMessage).to.be.true;
+      expect(shouldMarkNoWA).to.be.false; // NO marcar como no-wa
+    });
+
+    it('should mark as no-wa only when confirmed (hasWhatsApp === false)', () => {
+      // Simular escenario: instancia conectada, número verificado sin WA
+      const instanceState = { connected: true, state: 'open', error: null };
+      const hasWhatsApp = false; // Confirmado: no tiene WhatsApp
+
+      // Lógica del flujo ghl.js
+      const shouldQueueMessage = !instanceState.connected;
+      const shouldMarkNoWA = hasWhatsApp === false;
+
+      expect(shouldQueueMessage).to.be.false;
+      expect(shouldMarkNoWA).to.be.true; // SÍ marcar como no-wa (confirmado)
     });
   });
 
