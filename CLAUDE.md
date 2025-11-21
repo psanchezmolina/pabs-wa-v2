@@ -635,8 +635,9 @@ const description = await openaiAPI.analyzeImage(media.base64);
   - **Recomendación:** Limpiar BD manualmente: `UPDATE clients_details SET conversation_provider_id = TRIM(conversation_provider_id)`
 - **Números de teléfono - Formato E.164:**
   - GHL usa formato **E.164 estándar**: `+34660722687` (único formato oficial soportado)
-  - WhatsApp envía: `34660722687@s.whatsapp.net`
-  - Conversión automática: se quita `@s.whatsapp.net` y se añade `+` al inicio
+  - WhatsApp envía: `34660722687@s.whatsapp.net` o `34660722687:0@s.whatsapp.net` (con device ID)
+  - **Device ID (`:0`, `:1`, etc.):** WhatsApp multi-device añade sufijo de dispositivo (AD-JID format)
+  - Conversión automática: se quita `@s.whatsapp.net`, `:digit` (device ID), y se añade `+` al inicio
   - **Búsqueda optimizada:** Solo se busca en formato E.164 (1 llamada vs 3 llamadas multi-formato)
   - Si falla create por duplicado, se extrae el `contactId` del error (fallback inteligente)
 - **Cálculo de retraso de mensaje:** `Math.min(Math.max(text.length * 50, 2000), 10000)`

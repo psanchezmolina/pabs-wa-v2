@@ -77,8 +77,10 @@ async function handleWhatsAppWebhook(req, res) {
       fromMiddleware: !!req.client
     });
 
-    // Extraer datos
-    const phone = '+' + messageData.key.remoteJid.replace(/@s\.whatsapp\.net$/, '');
+    // Extraer datos (quitar @s.whatsapp.net y device ID como :0, :1, etc.)
+    const phone = '+' + messageData.key.remoteJid
+      .replace(/@s\.whatsapp\.net$/, '')
+      .replace(/:\d+$/, '');
     const userName = messageData.pushName;
     const messageId = messageData.key.id;
 
