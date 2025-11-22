@@ -23,35 +23,32 @@
     <!-- Estado de conexión -->
     <div id="status-section" class="status-section" style="display: none;">
       <div id="status-connected" class="status-box status-connected" style="display: none;">
-        <div class="status-icon">✅</div>
         <div class="status-content">
-          <h2>WhatsApp Conectado</h2>
+          <h2>✅ WhatsApp Conectado</h2>
           <p class="status-details">
-            <strong>Número conectado:</strong> <span id="phone-number">-</span>
+            <strong>Número conectado:</strong> <span id="phone-number">-</span><br>
+            <strong>Última conexión:</strong> <span id="last-connected">-</span>
           </p>
         </div>
       </div>
 
       <div id="status-disconnected" class="status-box status-disconnected" style="display: none;">
-        <div class="status-icon">⚠️</div>
         <div class="status-content">
-          <h2>Desconectado</h2>
+          <h2>⚠️ Desconectado</h2>
           <p>Elige un método para conectar tu WhatsApp:</p>
         </div>
       </div>
 
       <div id="status-loading" class="status-box status-loading">
-        <div class="status-icon">⏳</div>
         <div class="status-content">
-          <h2>Cargando...</h2>
+          <h2>⏳ Cargando...</h2>
           <p>Verificando estado de conexión...</p>
         </div>
       </div>
 
       <div id="status-error" class="status-box status-error" style="display: none;">
-        <div class="status-icon">❌</div>
         <div class="status-content">
-          <h2>Error</h2>
+          <h2>❌ Error</h2>
           <p id="error-message">No se pudo verificar el estado</p>
         </div>
       </div>

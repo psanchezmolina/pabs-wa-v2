@@ -155,6 +155,7 @@ BRAND_NAME=Pabs.ai  # Nombre de marca mostrado en panel de conexión (opcional)
 - `ghl_access_token` (TEXT) - Token de acceso OAuth
 - `ghl_refresh_token` (TEXT) - Token de refresco OAuth
 - `ghl_token_expiry` (TIMESTAMPTZ) - Expiración del token
+- `last_connected_at` (TIMESTAMPTZ) - Timestamp de última conexión exitosa de WhatsApp
 - `is_beta` (BOOLEAN, DEFAULT false) - Flag para clientes en programa beta
 - `langfuse_public_key` (VARCHAR) - Langfuse Public Key del proyecto del cliente (pk-lf-...)
 - `langfuse_secret_key` (VARCHAR) - Langfuse Secret Key del proyecto del cliente (sk-lf-...)
@@ -292,13 +293,18 @@ Panel moderno para conectar instancias de WhatsApp mediante QR Code o Pairing Co
 https://tu-dominio.com/panel/?location_id={{location.id}}
 ```
 
-**Notas:**
-- Auto-detecta `location_id` desde URL
-- Pairing code puede fallar si instancia fue creada hace tiempo → Fallback a QR
-- Panel funciona embebido en iframe (CSP configurado)
-- No usa localStorage/cookies (third-party context)
+**Características:**
+- **Auto-detección:** Obtiene `location_id` desde URL (GHL Custom Menu Link)
+- **Auto-actualización:** Si conexión exitosa pero sin número en BD, lo obtiene de Evolution API automáticamente
+- **Fecha de conexión:** Muestra "Hace Xh" o "Hace X días" en tiempo relativo
 - **White-label:** Configurar `BRAND_NAME` en .env para personalizar marca mostrada
-- Formato de teléfono: E.164 estándar (+34 660 722 687)
+- **Formato E.164:** Números mostrados como +34 660 722 687
+
+**Notas técnicas:**
+- Pairing code puede fallar si instancia fue creada hace tiempo → Fallback automático a QR
+- Panel funciona embebido en iframe (CSP configurado para GHL domains)
+- No usa localStorage/cookies (third-party context)
+- Endpoint `/panel/status` actualiza `instance_sender` y `last_connected_at` cuando detecta conexión
 
 ### Legacy (QR Panel) - DEPRECATED
 

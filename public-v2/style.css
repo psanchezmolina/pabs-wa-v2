@@ -50,17 +50,9 @@ body {
 }
 
 .status-box {
-  display: flex;
-  align-items: center;
   padding: 20px;
   border-radius: 8px;
   margin-bottom: 20px;
-}
-
-.status-icon {
-  font-size: 20px;
-  margin-right: 12px;
-  flex-shrink: 0;
 }
 
 .status-content h2 {
@@ -415,11 +407,6 @@ body {
   .status-section,
   .connection-methods {
     padding: 16px;
-  }
-
-  .status-icon {
-    font-size: 20px;
-    margin-right: 10px;
   }
 
   .tabs {

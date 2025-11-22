@@ -248,6 +248,36 @@ async function getConnectionState(instanceName, apiKey) {
   }
 }
 
+/**
+ * Obtiene información completa de una instancia (incluyendo número conectado)
+ * @param {string} instanceName - Nombre de la instancia
+ * @param {string} apiKey - API key de la instancia
+ * @returns {Object} Información completa de la instancia
+ */
+async function getInstanceInfo(instanceName, apiKey) {
+  try {
+    const response = await axios.get(
+      `${config.EVOLUTION_BASE_URL}/instance/fetchInstances/${instanceName}`,
+      {
+        headers: { apikey: apiKey },
+        timeout: 5000
+      }
+    );
+
+    // Response incluye: instance.instanceName, instance.owner, instance.profileName,
+    // instance.profilePictureUrl, instance.profileStatus, instance.state,
+    // instance.number (el número conectado en formato 34660722687@s.whatsapp.net)
+    return response.data;
+  } catch (error) {
+    logger.error('Failed to get instance info', {
+      instanceName,
+      error: error.message,
+      status: error.response?.status
+    });
+    throw error;
+  }
+}
+
 module.exports = {
   sendText,
   checkInstanceConnection,
@@ -255,5 +285,6 @@ module.exports = {
   restartInstance,
   getMediaBase64,
   connectInstance,
-  getConnectionState
+  getConnectionState,
+  getInstanceInfo
 };

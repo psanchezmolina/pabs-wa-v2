@@ -94,10 +94,10 @@ app.get('/panel/status/:locationId', async (req, res) => {
   const { locationId } = req.params;
 
   try {
-    const { getClientByLocationId } = require('./services/supabase');
-    const { getConnectionState } = require('./services/evolution');
+    const { getClientByLocationId, updateClient } = require('./services/supabase');
+    const { getConnectionState, getInstanceInfo } = require('./services/evolution');
 
-    const client = await getClientByLocationId(locationId);
+    let client = await getClientByLocationId(locationId);
     if (!client) {
       return res.status(404).json({
         error: 'Servicio no dado de alta. Contacte con el equipo.',
@@ -106,11 +106,45 @@ app.get('/panel/status/:locationId', async (req, res) => {
     }
 
     const stateData = await getConnectionState(client.instance_name, client.instance_apikey);
+    const state = stateData.instance?.state || 'unknown';
+
+    // Si está conectado pero no tenemos número, obtenerlo de Evolution API
+    if (state === 'open' && !client.instance_sender) {
+      try {
+        const instanceInfo = await getInstanceInfo(client.instance_name, client.instance_apikey);
+        const connectedNumber = instanceInfo.instance?.number;
+
+        if (connectedNumber) {
+          // Actualizar BD con número y fecha de conexión
+          await updateClient(locationId, {
+            instance_sender: connectedNumber,
+            last_connected_at: new Date().toISOString()
+          });
+
+          // Actualizar objeto en memoria
+          client.instance_sender = connectedNumber;
+          client.last_connected_at = new Date().toISOString();
+
+          logger.info('Auto-updated instance_sender from Evolution API', {
+            locationId,
+            instanceName: client.instance_name,
+            phoneNumber: connectedNumber
+          });
+        }
+      } catch (error) {
+        // No es crítico si falla, continuar con los datos que tenemos
+        logger.warn('Failed to auto-update instance_sender', {
+          locationId,
+          error: error.message
+        });
+      }
+    }
 
     res.json({
-      state: stateData.instance?.state || 'unknown',
+      state,
       instanceName: client.instance_name,
-      phoneNumber: client.instance_sender || null
+      phoneNumber: client.instance_sender || null,
+      lastConnectedAt: client.last_connected_at || null
     });
   } catch (error) {
     logger.error('Error getting panel status', {

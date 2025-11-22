@@ -21,6 +21,7 @@
 
   // Instance info
   const phoneNumberEl = document.getElementById('phone-number');
+  const lastConnectedEl = document.getElementById('last-connected');
 
   // Tabs
   const tabButtons = document.querySelectorAll('.tab-button');
@@ -165,8 +166,33 @@
     return cleaned;
   }
 
+  function formatRelativeTime(dateString) {
+    if (!dateString) return '-';
+
+    const now = new Date();
+    const past = new Date(dateString);
+    const diffMs = now - past;
+
+    const diffMinutes = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMinutes < 1) return 'Ahora mismo';
+    if (diffMinutes < 60) return `Hace ${diffMinutes} min`;
+    if (diffHours < 24) return `Hace ${diffHours}h`;
+    if (diffDays === 1) return 'Hace 1 día';
+    if (diffDays < 30) return `Hace ${diffDays} días`;
+
+    // Si es más de 30 días, mostrar fecha
+    return past.toLocaleDateString('es-ES', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric'
+    });
+  }
+
   function updateStatus(data) {
-    const { state, phoneNumber } = data;
+    const { state, phoneNumber, lastConnectedAt } = data;
 
     // Hide loading
     statusLoading.style.display = 'none';
@@ -178,6 +204,7 @@
       connectionMethods.style.display = 'none';
 
       phoneNumberEl.textContent = formatPhoneNumber(phoneNumber);
+      lastConnectedEl.textContent = formatRelativeTime(lastConnectedAt);
 
       stopPolling();
     } else {
