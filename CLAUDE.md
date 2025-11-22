@@ -134,6 +134,9 @@ LANGFUSE_BASE_URL=https://pabs-langfuse-web.r4isqy.easypanel.host
 # Legacy (panel v1 - deprecated)
 N8N_BASE_URL=https://newbrain.pabs.ai
 N8N_AUTH_HEADER=Bearer xxx
+
+# Branding (panel v2 - white-label)
+BRAND_NAME=Pabs.ai  # Nombre de marca mostrado en panel de conexión (opcional)
 ```
 
 ---
@@ -275,6 +278,7 @@ logBetaUsage(client, 'feature-name', { metadata: 'value' });
 Panel moderno para conectar instancias de WhatsApp mediante QR Code o Pairing Code.
 
 **Endpoints:**
+- `GET /panel/config` - Configuración de branding (retorna `{brandName}`)
 - `GET /panel/status/:locationId` - Estado de instancia (open/connecting/close)
 - `POST /panel/qr/:locationId` - Generar QR Code (retorna base64 o mensaje "ya conectado")
 - `POST /panel/pairing/:locationId` - Generar Pairing Code (body: `{phoneNumber}` sin +)
@@ -293,6 +297,8 @@ https://tu-dominio.com/panel/?location_id={{location.id}}
 - Pairing code puede fallar si instancia fue creada hace tiempo → Fallback a QR
 - Panel funciona embebido en iframe (CSP configurado)
 - No usa localStorage/cookies (third-party context)
+- **White-label:** Configurar `BRAND_NAME` en .env para personalizar marca mostrada
+- Formato de teléfono: E.164 estándar (+34 660 722 687)
 
 ### Legacy (QR Panel) - DEPRECATED
 

@@ -58,8 +58,8 @@ body {
 }
 
 .status-icon {
-  font-size: 48px;
-  margin-right: 20px;
+  font-size: 20px;
+  margin-right: 12px;
   flex-shrink: 0;
 }
 
@@ -418,8 +418,8 @@ body {
   }
 
   .status-icon {
-    font-size: 36px;
-    margin-right: 12px;
+    font-size: 20px;
+    margin-right: 10px;
   }
 
   .tabs {
