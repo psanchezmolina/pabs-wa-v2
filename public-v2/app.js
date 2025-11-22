@@ -18,7 +18,6 @@
   const pollingStatus = document.getElementById('polling-status');
 
   // Instance info
-  const instanceNameEl = document.getElementById('instance-name');
   const phoneNumberEl = document.getElementById('phone-number');
 
   // Tabs
@@ -49,7 +48,7 @@
     locationId = urlParams.get('location_id');
 
     if (!locationId) {
-      showError('No se encontró location_id en la URL. Asegúrate de acceder desde GHL.');
+      showError('No se encontrï¿½ location_id en la URL. Asegï¿½rate de acceder desde GHL.');
       return;
     }
 
@@ -123,6 +122,13 @@
       const response = await fetch(`/panel/status/${locationId}`);
 
       if (!response.ok) {
+        const data = await response.json();
+
+        // Si es servicio no configurado, mostrar mensaje especÃ­fico
+        if (data.notConfigured) {
+          throw new Error(data.error);
+        }
+
         throw new Error(`Error ${response.status}: ${response.statusText}`);
       }
 
@@ -135,7 +141,7 @@
   }
 
   function updateStatus(data) {
-    const { state, instanceName, phoneNumber } = data;
+    const { state, phoneNumber } = data;
 
     // Hide loading
     statusLoading.style.display = 'none';
@@ -146,7 +152,6 @@
       statusDisconnected.style.display = 'none';
       connectionMethods.style.display = 'none';
 
-      instanceNameEl.textContent = instanceName || '-';
       phoneNumberEl.textContent = phoneNumber || '-';
 
       stopPolling();
@@ -223,13 +228,13 @@
 
     // Validate
     if (!phoneNumber) {
-      alert('Por favor, ingresa tu número de teléfono');
+      alert('Por favor, ingresa tu nï¿½mero de telï¿½fono');
       phoneInput.focus();
       return;
     }
 
     if (!/^\d{1,15}$/.test(phoneNumber)) {
-      alert('Formato inválido. Ingresa solo dígitos (sin el signo +), máximo 15 caracteres.');
+      alert('Formato invï¿½lido. Ingresa solo dï¿½gitos (sin el signo +), mï¿½ximo 15 caracteres.');
       phoneInput.focus();
       return;
     }
@@ -261,7 +266,7 @@
         startPolling();
       } else if (data.fallbackToQR) {
         // Failed - Fallback to QR
-        alert('El código de vinculación no está disponible. Te cambiaremos al método de QR Code.');
+        alert('El cï¿½digo de vinculaciï¿½n no estï¿½ disponible. Te cambiaremos al mï¿½todo de QR Code.');
 
         // Switch to QR tab
         switchTab('qr');
@@ -276,7 +281,7 @@
     } catch (error) {
       console.error('Error generating pairing code:', error);
       pairingLoading.style.display = 'none';
-      alert(`Error al generar código de vinculación: ${error.message}`);
+      alert(`Error al generar cï¿½digo de vinculaciï¿½n: ${error.message}`);
       btnGeneratePairing.disabled = false;
     }
   }
