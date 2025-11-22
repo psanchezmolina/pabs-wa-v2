@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="
+    default-src 'self';
+    script-src 'self';
+    style-src 'self' 'unsafe-inline';
+    img-src 'self' data: blob:;
+    connect-src 'self';
+  ">
+  <title>Conexión WhatsApp - Pabs.ai</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="panel-container">
+    <header class="panel-header">
+      <h1>Conexión WhatsApp</h1>
+      <p class="subtitle">Conecta tu número de WhatsApp a Pabs.ai</p>
+    </header>
+
+    <!-- Estado de conexión -->
+    <div id="status-section" class="status-section" style="display: none;">
+      <div id="status-connected" class="status-box status-connected" style="display: none;">
+        <div class="status-icon"></div>
+        <div class="status-content">
+          <h2>Conectado</h2>
+          <p class="status-details">
+            <strong>Instancia:</strong> <span id="instance-name">-</span><br>
+            <strong>Número:</strong> <span id="phone-number">-</span>
+          </p>
+        </div>
+      </div>
+
+      <div id="status-disconnected" class="status-box status-disconnected" style="display: none;">
+        <div class="status-icon"> </div>
+        <div class="status-content">
+          <h2>Desconectado</h2>
+          <p>Elige un método para conectar tu WhatsApp:</p>
+        </div>
+      </div>
+
+      <div id="status-loading" class="status-box status-loading">
+        <div class="status-icon">ó</div>
+        <div class="status-content">
+          <h2>Cargando...</h2>
+          <p>Verificando estado de conexión...</p>
+        </div>
+      </div>
+
+      <div id="status-error" class="status-box status-error" style="display: none;">
+        <div class="status-icon">L</div>
+        <div class="status-content">
+          <h2>Error</h2>
+          <p id="error-message">No se pudo verificar el estado</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tabs de métodos de conexión -->
+    <div id="connection-methods" class="connection-methods" style="display: none;">
+      <div class="tabs">
+        <button class="tab-button active" data-tab="qr">
+          =ñ QR Code (Recomendado)
+        </button>
+        <button class="tab-button" data-tab="pairing">
+          =" Código de Vinculación
+        </button>
+      </div>
+
+      <!-- Tab QR Code -->
+      <div id="tab-qr" class="tab-content active">
+        <div class="method-description">
+          <p><strong>Escanea el código QR con tu WhatsApp:</strong></p>
+          <ol>
+            <li>Abre WhatsApp en tu teléfono</li>
+            <li>Toca <strong>Menú</strong> o <strong>Configuración</strong></li>
+            <li>Toca <strong>Dispositivos vinculados</strong></li>
+            <li>Toca <strong>Vincular un dispositivo</strong></li>
+            <li>Apunta tu teléfono hacia esta pantalla para escanear el código</li>
+          </ol>
+        </div>
+
+        <button id="btn-generate-qr" class="btn-primary">Generar Código QR</button>
+
+        <div id="qr-output" class="output-container" style="display: none;">
+          <div id="qr-loading" class="loading-spinner" style="display: none;">
+            <div class="spinner"></div>
+            <p>Generando QR...</p>
+          </div>
+          <div id="qr-container" style="display: none;">
+            <img id="qr-image" alt="QR Code" class="qr-image">
+            <p class="qr-hint">El código QR se actualiza automáticamente cada 20 segundos</p>
+          </div>
+          <div id="qr-already-connected" class="info-message" style="display: none;">
+            <p> Tu WhatsApp ya está conectado</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab Pairing Code -->
+      <div id="tab-pairing" class="tab-content">
+        <div class="method-description">
+          <div class="warning-box">
+            <strong>  Método Experimental</strong>
+            <p>El código de vinculación puede no funcionar si la instancia fue creada hace tiempo. Si falla, usa el método de QR Code.</p>
+          </div>
+          <p><strong>Vincula con código de 8 dígitos:</strong></p>
+          <ol>
+            <li>Ingresa tu número de teléfono (sin el signo +)</li>
+            <li>Genera el código de vinculación</li>
+            <li>Abre WhatsApp en tu teléfono</li>
+            <li>Toca <strong>Dispositivos vinculados</strong> ’ <strong>Vincular un dispositivo</strong></li>
+            <li>Toca <strong>Vincular con número de teléfono</strong></li>
+            <li>Ingresa el código de 8 dígitos</li>
+          </ol>
+        </div>
+
+        <div class="input-group">
+          <label for="phone-input">Número de teléfono:</label>
+          <input
+            type="text"
+            id="phone-input"
+            placeholder="Ej: 34660722687 (sin +)"
+            pattern="[0-9]{1,15}"
+            maxlength="15"
+          >
+          <small class="input-hint">Solo dígitos, sin espacios ni el signo +</small>
+        </div>
+
+        <button id="btn-generate-pairing" class="btn-primary">Generar Código de Vinculación</button>
+
+        <div id="pairing-output" class="output-container" style="display: none;">
+          <div id="pairing-loading" class="loading-spinner" style="display: none;">
+            <div class="spinner"></div>
+            <p>Generando código...</p>
+          </div>
+          <div id="pairing-code-display" class="pairing-code-display" style="display: none;">
+            <p>Tu código de vinculación:</p>
+            <div class="pairing-code" id="pairing-code"></div>
+            <p class="pairing-hint">Ingresa este código en WhatsApp</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Polling status -->
+    <div id="polling-status" class="polling-status" style="display: none;">
+      <div class="spinner-small"></div>
+      <span>Esperando conexión...</span>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

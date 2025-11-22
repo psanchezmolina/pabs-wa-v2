@@ -28,7 +28,7 @@ app.use(helmet({
       imgSrc: ["'self'", "data:", "blob:"],
       connectSrc: ["'self'", config.N8N_BASE_URL],
       fontSrc: ["'self'", "https://at.alicdn.com"],
-      frameAncestors: ["'self'", "https://*.gohighlevel.com", "https://*.highlevel.company", "https://*.pabs.ai", "https://*.roisnap.com"]
+      frameAncestors: ["'self'", "https://*.gohighlevel.com", "https://*.msgsndr.com", "https://*.highlevel.company", "https://*.pabs.ai", "https://*.roisnap.com"]
     }
   },
   frameguard: false // Desactivar X-Frame-Options para permitir iframe en GHL
@@ -48,6 +48,7 @@ const oauthLimiter = rateLimit({
 
 app.use(express.json({ limit: '1mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
+app.use('/panel', express.static(path.join(__dirname, 'public-v2')));
 
 // Webhooks (con validación de whitelist)
 app.post('/webhook/ghl', validateGHLWebhook, handleGHLWebhook);
@@ -71,6 +72,134 @@ app.get('/api/check-beta', async (req, res) => {
     res.json({ is_beta: isBetaClient(client) });
   } catch (error) {
     res.json({ is_beta: false });
+  }
+});
+
+// Panel v2 - Connection Management
+// GET /panel/status/:locationId - Estado de instancia
+app.get('/panel/status/:locationId', async (req, res) => {
+  const { locationId } = req.params;
+
+  try {
+    const { getClientByLocationId } = require('./services/supabase');
+    const { getConnectionState } = require('./services/evolution');
+
+    const client = await getClientByLocationId(locationId);
+    if (!client) {
+      return res.status(404).json({ error: 'Cliente no encontrado' });
+    }
+
+    const stateData = await getConnectionState(client.instance_name, client.instance_apikey);
+
+    res.json({
+      state: stateData.instance?.state || 'unknown',
+      instanceName: client.instance_name,
+      phoneNumber: client.instance_sender || null
+    });
+  } catch (error) {
+    logger.error('Error getting panel status', {
+      locationId,
+      error: error.message
+    });
+    res.status(500).json({ error: 'Error al obtener estado de la instancia' });
+  }
+});
+
+// POST /panel/qr/:locationId - Generar QR code
+app.post('/panel/qr/:locationId', async (req, res) => {
+  const { locationId } = req.params;
+
+  try {
+    const { getClientByLocationId } = require('./services/supabase');
+    const { connectInstance } = require('./services/evolution');
+
+    const client = await getClientByLocationId(locationId);
+    if (!client) {
+      return res.status(404).json({ error: 'Cliente no encontrado' });
+    }
+
+    const result = await connectInstance(client.instance_name, client.instance_apikey);
+
+    // Si hay base64 → Instancia desconectada, retornar QR
+    if (result.base64) {
+      return res.json({ qrBase64: result.base64 });
+    }
+
+    // Si NO hay base64 → Instancia ya conectada
+    return res.json({ message: 'Conexión ya establecida' });
+  } catch (error) {
+    logger.error('Error generating QR code', {
+      locationId,
+      error: error.message
+    });
+    res.status(500).json({ error: 'Error al generar código QR' });
+  }
+});
+
+// POST /panel/pairing/:locationId - Generar pairing code
+app.post('/panel/pairing/:locationId', async (req, res) => {
+  const { locationId } = req.params;
+  const { phoneNumber } = req.body;
+
+  // Validar número de teléfono
+  if (!phoneNumber || typeof phoneNumber !== 'string') {
+    return res.status(400).json({ error: 'Número de teléfono requerido' });
+  }
+
+  // Validar formato: solo dígitos, max 15 caracteres, sin +
+  if (!/^\d{1,15}$/.test(phoneNumber)) {
+    return res.status(400).json({
+      error: 'Formato de número inválido. Debe ser solo dígitos sin el signo +, máximo 15 caracteres.'
+    });
+  }
+
+  try {
+    const { getClientByLocationId, updateClient } = require('./services/supabase');
+    const { connectInstance } = require('./services/evolution');
+
+    const client = await getClientByLocationId(locationId);
+    if (!client) {
+      return res.status(404).json({ error: 'Cliente no encontrado' });
+    }
+
+    // Intentar generar pairing code
+    const result = await connectInstance(client.instance_name, client.instance_apikey, phoneNumber);
+
+    if (result.pairingCode) {
+      // Éxito - Guardar número en BD
+      await updateClient(locationId, {
+        instance_sender: `${phoneNumber}@s.whatsapp.net`
+      });
+
+      logger.info('Pairing code generated successfully', {
+        locationId,
+        instanceName: client.instance_name
+      });
+
+      return res.json({
+        pairingCode: result.pairingCode,
+        phoneNumber,
+        success: true
+      });
+    }
+
+    // No se generó pairing code (caso inesperado)
+    return res.status(400).json({
+      error: 'No se pudo generar el código de vinculación',
+      fallbackToQR: true
+    });
+  } catch (error) {
+    logger.error('Error generating pairing code', {
+      locationId,
+      error: error.message,
+      status: error.response?.status
+    });
+
+    // Error - Sugerir fallback a QR
+    return res.status(400).json({
+      error: 'Pairing code no disponible. Por favor, usa QR Code.',
+      fallbackToQR: true
+    });
   }
 });
 

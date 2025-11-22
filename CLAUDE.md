@@ -48,7 +48,7 @@
 ├── services/
 │   ├── supabase.js       # DB client + queries
 │   ├── ghl.js            # GHL API + OAuth auto-refresh + caché tokens
-│   ├── evolution.js      # Evolution API wrapper + checkInstanceConnection
+│   ├── evolution.js      # Evolution API wrapper + panel connection (QR/pairing)
 │   ├── openai.js         # Whisper + Vision
 │   ├── cache.js          # Caché en memoria (tokens, contactos, conversaciones)
 │   ├── messageCache.js   # Cola de mensajes fallidos (8h TTL, retry automático)
@@ -67,7 +67,11 @@
 │   ├── betaFeatures.js   # Beta feature flags helpers
 │   ├── mediaHelper.js    # DRY media processing helpers (shared)
 │   └── instanceMonitor.js # Monitor instancias + auto-restart (webhook + polling 2h)
-├── public/                 # QR panel (DO NOT MODIFY)
+├── public-v2/              # Panel de conexión WhatsApp v2
+│   ├── index.html        # Panel UI
+│   ├── app.js            # Lógica vanilla JS
+│   └── style.css         # Estilos custom
+├── public/                 # Panel legacy (DEPRECATED - mantener para compatibilidad)
 └── test/                   # Tests unitarios e integración
 ```
 
@@ -127,7 +131,7 @@ ADMIN_EMAIL=tu-email@example.com  # Email para recibir alertas de fallback
 # Solo URL base global - Las API keys se guardan por cliente en clients_details
 LANGFUSE_BASE_URL=https://pabs-langfuse-web.r4isqy.easypanel.host
 
-# Legacy (QR panel)
+# Legacy (panel v1 - deprecated)
 N8N_BASE_URL=https://newbrain.pabs.ai
 N8N_AUTH_HEADER=Bearer xxx
 ```
@@ -266,10 +270,35 @@ logBetaUsage(client, 'feature-name', { metadata: 'value' });
 
 - `GET /health` - Estado del servidor + servicios externos
 
-### Legacy (QR Panel)
+### Panel de Conexión WhatsApp v2
 
-- `GET /` - Sirve `public/index.html`
+Panel moderno para conectar instancias de WhatsApp mediante QR Code o Pairing Code.
+
+**Endpoints:**
+- `GET /panel/status/:locationId` - Estado de instancia (open/connecting/close)
+- `POST /panel/qr/:locationId` - Generar QR Code (retorna base64 o mensaje "ya conectado")
+- `POST /panel/pairing/:locationId` - Generar Pairing Code (body: `{phoneNumber}` sin +)
+
+**Métodos de conexión:**
+1. **QR Code** (principal): Retorna base64 de imagen lista para `<img src="">`
+2. **Pairing Code** (experimental): Genera código de 8 dígitos, fallback automático a QR si falla
+
+**URL para GHL Custom Menu Link:**
+```
+https://tu-dominio.com/panel/?location_id={{location.id}}
+```
+
+**Notas:**
+- Auto-detecta `location_id` desde URL
+- Pairing code puede fallar si instancia fue creada hace tiempo → Fallback a QR
+- Panel funciona embebido en iframe (CSP configurado)
+- No usa localStorage/cookies (third-party context)
+
+### Legacy (QR Panel) - DEPRECATED
+
+- `GET /` - Sirve `public/index.html` (mantener para compatibilidad)
 - `POST /api/:action` - Proxy a n8n (NO MODIFICAR)
+- **Migrar usuarios a panel v2 (`/panel/`)**
 
 ---
 

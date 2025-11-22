@@ -129,6 +129,40 @@ async function updateGHLTokens(locationId, accessToken, refreshToken, expiresIn)
   }
 }
 
+async function updateClient(locationId, updates) {
+  logger.info('Attempting to update client', {
+    locationId,
+    fields: Object.keys(updates)
+  });
+
+  const { data, error } = await supabase
+    .from('clients_details')
+    .update({
+      ...updates,
+      updated_at: new Date().toISOString()
+    })
+    .eq('location_id', locationId)
+    .select();
+
+  if (error) {
+    logger.error('Error updating client', { locationId, error: error.message, details: error });
+    throw error;
+  }
+
+  logger.info('Client updated successfully', {
+    locationId,
+    rowsAffected: data?.length || 0,
+    updated: data?.length > 0
+  });
+
+  if (!data || data.length === 0) {
+    logger.warn('No rows updated - location_id not found', { locationId });
+    throw new Error(`No client found with location_id: ${locationId}`);
+  }
+
+  return cleanClient(data[0]);
+}
+
 async function getAgentConfig(locationId, agentName) {
   // Primero intentar sin .single() para ver cuántos registros hay
   const { data: allData, error: queryError } = await supabase
@@ -181,5 +215,6 @@ module.exports = {
   getClientByLocationId,
   getClientByInstanceName,
   updateGHLTokens,
+  updateClient,
   getAgentConfig
 };

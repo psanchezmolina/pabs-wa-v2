@@ -184,10 +184,76 @@ async function getMediaBase64(instanceName, apiKey, messageId) {
   return response.data;
 }
 
+/**
+ * Conecta una instancia generando QR code o pairing code
+ * @param {string} instanceName - Nombre de la instancia
+ * @param {string} apiKey - API key de la instancia
+ * @param {string|null} phoneNumber - Número de teléfono sin + para pairing code (opcional)
+ * @returns {Object} { base64?, pairingCode?, code? }
+ */
+async function connectInstance(instanceName, apiKey, phoneNumber = null) {
+  try {
+    const url = phoneNumber
+      ? `${config.EVOLUTION_BASE_URL}/instance/connect/${instanceName}?number=${phoneNumber}`
+      : `${config.EVOLUTION_BASE_URL}/instance/connect/${instanceName}`;
+
+    const response = await axios.get(url, {
+      headers: { apikey: apiKey },
+      timeout: 15000
+    });
+
+    logger.info('Instance connect request', {
+      instanceName,
+      method: phoneNumber ? 'pairing' : 'qr',
+      hasBase64: !!response.data?.base64,
+      hasPairingCode: !!response.data?.pairingCode
+    });
+
+    return response.data; // { base64?, pairingCode?, code?, count? }
+  } catch (error) {
+    logger.error('Failed to connect instance', {
+      instanceName,
+      method: phoneNumber ? 'pairing' : 'qr',
+      error: error.message,
+      status: error.response?.status
+    });
+    throw error;
+  }
+}
+
+/**
+ * Obtiene el estado de conexión de una instancia (formato crudo para panel)
+ * @param {string} instanceName - Nombre de la instancia
+ * @param {string} apiKey - API key de la instancia
+ * @returns {Object} { instance: { instanceName, state } }
+ */
+async function getConnectionState(instanceName, apiKey) {
+  try {
+    const response = await axios.get(
+      `${config.EVOLUTION_BASE_URL}/instance/connectionState/${instanceName}`,
+      {
+        headers: { apikey: apiKey },
+        timeout: 5000
+      }
+    );
+
+    return response.data; // { instance: { instanceName, state } }
+  } catch (error) {
+    logger.error('Failed to get connection state', {
+      instanceName,
+      error: error.message,
+      status: error.response?.status
+    });
+    throw error;
+  }
+}
+
 module.exports = {
   sendText,
   checkInstanceConnection,
   checkWhatsAppNumber,
   restartInstance,
-  getMediaBase64
+  getMediaBase64,
+  connectInstance,
+  getConnectionState
 };
