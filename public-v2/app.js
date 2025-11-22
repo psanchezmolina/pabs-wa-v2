@@ -5,8 +5,10 @@
   let pollingInterval = null;
   let pollCount = 0;
   const MAX_POLL_COUNT = 20; // 20 * 3s = 60s max
+  let brandName = 'Pabs.ai'; // Default
 
   // DOM Elements
+  const subtitleEl = document.querySelector('.subtitle');
   const statusSection = document.getElementById('status-section');
   const statusLoading = document.getElementById('status-loading');
   const statusConnected = document.getElementById('status-connected');
@@ -42,14 +44,24 @@
   const pairingCodeEl = document.getElementById('pairing-code');
 
   // Initialize
-  function init() {
+  async function init() {
     // Extract location_id from URL
     const urlParams = new URLSearchParams(window.location.search);
     locationId = urlParams.get('location_id');
 
     if (!locationId) {
-      showError('No se encontr� location_id en la URL. Aseg�rate de acceder desde GHL.');
+      showError('No se encontró location_id en la URL. Asegúrate de acceder desde GHL.');
       return;
+    }
+
+    // Fetch branding config
+    try {
+      const configRes = await fetch('/panel/config');
+      const config = await configRes.json();
+      brandName = config.brandName || 'Pabs.ai';
+      subtitleEl.textContent = `Conecta tu número de WhatsApp a ${brandName}`;
+    } catch (error) {
+      console.error('Error loading config:', error);
     }
 
     // Setup event listeners
@@ -140,6 +152,19 @@
     }
   }
 
+  function formatPhoneNumber(phone) {
+    if (!phone) return '-';
+    // Remove @s.whatsapp.net and device ID
+    let cleaned = phone.replace(/@s\.whatsapp\.net$/, '').replace(/:\d+$/, '');
+    // Add + if missing
+    if (!cleaned.startsWith('+')) cleaned = '+' + cleaned;
+    // Format with spaces (e.g., +34 660 722 687)
+    if (cleaned.length > 3) {
+      return cleaned.slice(0, 3) + ' ' + cleaned.slice(3).match(/.{1,3}/g).join(' ');
+    }
+    return cleaned;
+  }
+
   function updateStatus(data) {
     const { state, phoneNumber } = data;
 
@@ -152,7 +177,7 @@
       statusDisconnected.style.display = 'none';
       connectionMethods.style.display = 'none';
 
-      phoneNumberEl.textContent = phoneNumber || '-';
+      phoneNumberEl.textContent = formatPhoneNumber(phoneNumber);
 
       stopPolling();
     } else {

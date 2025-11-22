@@ -79,5 +79,8 @@ module.exports = {
 
   // Legacy (QR panel)
   N8N_BASE_URL: process.env.N8N_BASE_URL,
-  N8N_AUTH_HEADER: process.env.N8N_AUTH_HEADER
+  N8N_AUTH_HEADER: process.env.N8N_AUTH_HEADER,
+
+  // Branding
+  BRAND_NAME: process.env.BRAND_NAME || 'Pabs.ai'
 };

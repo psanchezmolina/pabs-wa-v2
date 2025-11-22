@@ -82,6 +82,13 @@ app.get('/api/check-beta', async (req, res) => {
 });
 
 // Panel v2 - Connection Management
+// GET /panel/config - Configuración de branding
+app.get('/panel/config', (req, res) => {
+  res.json({
+    brandName: config.BRAND_NAME
+  });
+});
+
 // GET /panel/status/:locationId - Estado de instancia
 app.get('/panel/status/:locationId', async (req, res) => {
   const { locationId } = req.params;
