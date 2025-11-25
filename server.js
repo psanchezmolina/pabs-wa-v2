@@ -19,9 +19,8 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Trust proxy - Required for Easypanel/Docker deployment
-// Set to 1 to trust only the first proxy (Easypanel reverse proxy)
-// This allows express-rate-limit to correctly identify client IPs
-app.set('trust proxy', 1);
+// COMMENTED OUT TEMPORARILY TO TEST IF THIS BREAKS OAUTH
+// app.set('trust proxy', 1);
 
 // DEBUG: Log redirect URI at startup (TEMPORARY)
 logger.info('🔍 OAuth configuration check', {
@@ -316,7 +315,8 @@ app.all('/api/:action', async (req, res) => {
 });
 
 // OAuth: Iniciar flujo
-app.get('/oauth/ghl/connect', oauthLimiter, (req, res) => {
+// TEMPORARILY DISABLED RATE LIMITER TO TEST
+app.get('/oauth/ghl/connect', /* oauthLimiter, */ (req, res) => {
   const { location_id } = req.query;
   
   if (!location_id) {
@@ -350,7 +350,8 @@ app.get('/oauth/ghl/connect', oauthLimiter, (req, res) => {
 });
 
 // OAuth: Callback
-app.get('/auth/credentials2/callback', oauthLimiter, async (req, res) => {
+// TEMPORARILY DISABLED RATE LIMITER TO TEST
+app.get('/auth/credentials2/callback', /* oauthLimiter, */ async (req, res) => {
   const { code, state: locationId } = req.query;
   
   if (!code || !locationId) {
