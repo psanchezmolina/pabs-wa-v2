@@ -145,7 +145,7 @@ async function handleAgentWebhook(req, res) {
 
     logger.info('✅ Step 3 COMPLETE: Agent config found', {
       agente,
-      chatflow_id: agentConfig.chatflow_id
+      agent_name: agentConfig.agent_name
     });
 
     // Gestión de buffer

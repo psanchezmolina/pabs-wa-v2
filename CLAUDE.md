@@ -44,7 +44,7 @@
 ├── webhooks/
 │   ├── ghl.js            # GHL → WhatsApp handler
 │   ├── whatsapp.js       # WhatsApp → GHL handler
-│   └── agent.js          # Agent system handler (beta)
+│   └── agent.js          # Agent system handler
 ├── services/
 │   ├── supabase.js       # DB client + queries
 │   ├── ghl.js            # GHL API + OAuth auto-refresh + caché tokens
@@ -52,10 +52,10 @@
 │   ├── openai.js         # Whisper + Vision
 │   ├── cache.js          # Caché en memoria (tokens, contactos, conversaciones)
 │   ├── messageCache.js   # Cola de mensajes fallidos (8h TTL, retry automático)
-│   ├── langfuse.js       # Langfuse API client (beta)
-│   ├── flowise.js        # Flowise API client (beta)
-│   ├── agentBuffer.js    # Message buffering + debouncing (beta)
-│   └── mediaProcessor.js # Attachment processing (beta)
+│   ├── langfuse.js       # Langfuse API client
+│   ├── flowise.js        # Flowise API client
+│   ├── agentBuffer.js    # Message buffering + debouncing
+│   └── mediaProcessor.js # Attachment processing
 ├── utils/
 │   ├── retry.js          # axios-retry config + timeout global
 │   ├── logger.js         # Winston logger
@@ -127,7 +127,7 @@ ADMIN_INSTANCE_APIKEY=xxx  # Requerido para notificaciones
 RESEND_API_KEY=re_xxx  # API key de Resend (opcional)
 ADMIN_EMAIL=tu-email@example.com  # Email para recibir alertas de fallback
 
-# Langfuse (opcional - solo para agent system beta)
+# Langfuse (opcional - para agent system)
 # Solo URL base global - Las API keys se guardan por cliente en clients_details
 LANGFUSE_BASE_URL=https://pabs-langfuse-web.r4isqy.easypanel.host
 
@@ -169,7 +169,7 @@ BRAND_NAME=Pabs.ai  # Nombre de marca mostrado en panel de conexión (opcional)
 - Política: "Allow authenticated access" permite acceso con anon key
 - No requiere service_role key
 
-### Table: `agent_configs` (Beta)
+### Table: `agent_configs`
 
 **Columnas:**
 
@@ -185,7 +185,12 @@ BRAND_NAME=Pabs.ai  # Nombre de marca mostrado en panel de conexión (opcional)
 - `UNIQUE(location_id, agent_name)`
 - `FOREIGN KEY (location_id) REFERENCES clients_details(location_id) ON DELETE CASCADE`
 
-**Propósito:** Configuración de agentes conversacionales con IA para el sistema beta de agentes.
+**Seguridad:**
+- RLS (Row Level Security) activado
+- Política: "Allow authenticated access" permite acceso con anon key
+- No requiere service_role key
+
+**Propósito:** Configuración de agentes conversacionales con IA para el sistema de agentes.
 
 ---
 
@@ -255,10 +260,10 @@ logBetaUsage(client, 'feature-name', { metadata: 'value' });
   - Rechaza con 403 si instancia no está autorizada
   - Busca automáticamente la configuración del cliente en Supabase usando `instance_name`
   - Soporta múltiples instancias simultáneamente sin necesidad de endpoints diferentes
-- `POST /webhook/agent` - **Webhook de agent system** (beta feature)
+- `POST /webhook/agent` - **Webhook de agent system**
   - Recibe mensajes de GHL para procesamiento con IA conversacional
-  - **Validación whitelist:** Verifica que `location_id` exista en BD + `is_beta=true`
-  - Rechaza con 403 si no está autorizado o no tiene beta activado
+  - **Validación whitelist:** Verifica que `location_id` exista en BD
+  - Rechaza con 403 si no está autorizado
   - Buffering de mensajes con debouncing de 7 segundos
   - Procesamiento asíncrono con Flowise + Langfuse
   - Retorna 200 inmediatamente, procesamiento ocurre en background
@@ -405,15 +410,13 @@ https://tu-dominio.com/panel/?location_id={{location.id}}
 - Notifica solo en cambios (no spam)
 - Carga mínima: ~1,800 requests/día con 150 instancias (polling cada 2h)
 
-### 6. Agent System (Beta Feature)
-
-**Estado:** Beta - requiere `is_beta=true` en `clients_details`
+### 6. Agent System
 
 **Overview:**
 Sistema de agentes conversacionales con IA que procesa mensajes de GHL (SMS, IG, FB), los agrupa con debouncing (7s), los envía a Flowise para procesamiento AI, y retorna respuestas multiparte a través de GHL.
 
 **Arquitectura:**
-- **Webhook:** `POST /webhook/agent` (validación whitelist + beta flag)
+- **Webhook:** `POST /webhook/agent` (validación whitelist)
 - **Buffer:** Mensajes se acumulan en RAM (NodeCache, 10min TTL)
 - **Debouncing:** 7 segundos (auto-reset en nuevo mensaje)
 - **AI Processing:** Flowise + Langfuse (prompt management)
@@ -427,11 +430,12 @@ CREATE TABLE agent_configs (
   id SERIAL PRIMARY KEY,
   location_id VARCHAR NOT NULL,
   agent_name VARCHAR NOT NULL,
-  flowise_webhook VARCHAR NOT NULL,  -- URL completa del chatflow
-  chatflow_id VARCHAR NOT NULL,      -- ID del chatflow en Flowise
-  created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW(),
-  UNIQUE(location_id, agent_name)
+  flowise_webhook_url TEXT NOT NULL,  -- URL completa del webhook de Flowise
+  flowise_api_key TEXT,                -- API key de Flowise (opcional, ej: "Bearer xxx")
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(location_id, agent_name),
+  FOREIGN KEY (location_id) REFERENCES clients_details(location_id) ON DELETE CASCADE
 );
 ```
 
@@ -451,7 +455,7 @@ CREATE TABLE agent_configs (
 **Workflow completo:**
 
 1. **Recepción:** GHL envía webhook con mensaje (SMS/IG/FB)
-2. **Validación:** Middleware verifica `location_id` + `is_beta=true`
+2. **Validación:** Middleware verifica que `location_id` exista en BD
 3. **Procesamiento:** Attachments procesados con OpenAI (compartido con whatsapp.js)
 4. **Buffering:** Mensaje añadido al buffer del contacto+canal
 5. **Debounce:** Timer de 7s configurado (auto-reset si llega nuevo mensaje)
@@ -508,7 +512,7 @@ CREATE TABLE agent_configs (
 
 **Importante:** `sessionId` se pasa dentro de `overrideConfig` (NO como parámetro separado) para mantener la memoria de la conversación en Flowise. Usa el `conversationId` de GHL como valor.
 
-**Environment Variables (opcionales - solo para beta):**
+**Environment Variables (opcionales):**
 
 ```bash
 # Langfuse (prompt management - solo URL base)
@@ -540,11 +544,6 @@ WHERE location_id = 'jWmwy7nMqnsXQPdZdSW8';
 - Buffer v1: simple comparación de cantidad de mensajes (puede mejorarse con hash)
 - Procesamiento asíncrono: webhook retorna 200 inmediatamente
 - Errores en debounce callback tienen manejo separado (no capturados por try/catch principal)
-
-**Cliente de prueba:**
-- Location ID: `jWmwy7nMqnsXQPdZdSW8`
-- Agente: `agente-roi`
-- is_beta: `true`
 
 Ver `FLOWISE.md` para documentación técnica completa del sistema.
 

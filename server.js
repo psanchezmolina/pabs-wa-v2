@@ -61,7 +61,7 @@ app.post('/webhook/ghl', validateGHLWebhook, handleGHLWebhook);
 app.post('/webhook/whatsapp', validateWhatsAppWebhook, handleWhatsAppWebhook);
 // Evolution API envía eventos con el tipo en la ruta (ej: /webhook/whatsapp/messages-upsert)
 app.post('/webhook/whatsapp/*', validateWhatsAppWebhook, handleWhatsAppWebhook);
-// Agent webhook (beta feature - requiere is_beta=true)
+// Agent webhook (AI conversational agent system)
 app.post('/webhook/agent', validateAgentWhitelist, handleAgentWebhook);
 
 // Check beta status

@@ -11,7 +11,7 @@ const REQUIRED_ENV_VARS = [
   'EVOLUTION_BASE_URL'
 ];
 
-// Variables opcionales para features beta (Langfuse para agent system)
+// Variables opcionales (Langfuse para agent system)
 const OPTIONAL_ENV_VARS = {
   langfuse: ['LANGFUSE_BASE_URL']  // Public/Secret keys now stored per-client in database
 };

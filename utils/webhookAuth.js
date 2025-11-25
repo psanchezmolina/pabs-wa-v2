@@ -89,7 +89,7 @@ async function validateWhatsAppWebhook(req, res, next) {
 
 /**
  * Middleware para validar webhook del Agent System
- * Verifica que el locationId exista en BD y que is_beta esté activado
+ * Verifica que el locationId exista en BD (whitelist)
  */
 async function validateAgentWhitelist(req, res, next) {
   try {
@@ -115,16 +115,7 @@ async function validateAgentWhitelist(req, res, next) {
       return res.status(403).json({ error: 'Unauthorized location_id' });
     }
 
-    // Verificar que el cliente tiene is_beta activado
-    if (!client.is_beta) {
-      logger.warn('Agent webhook from non-beta client', {
-        locationId,
-        ip: req.ip
-      });
-      return res.status(403).json({ error: 'Agent feature not enabled for this location' });
-    }
-
-    // Cliente válido y beta activado, continuar
+    // Cliente válido, continuar
     req.client = client; // Pasar cliente al handler (evitar consulta duplicada)
     next();
 
