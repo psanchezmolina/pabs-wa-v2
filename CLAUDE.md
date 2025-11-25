@@ -789,6 +789,11 @@ Cuando implementes nuevas funcionalidades o fixes, sigue este proceso:
 - Esto está configurado en `server.js:534`: `app.listen(PORT, '0.0.0.0')`
 - **NUNCA cambiar a localhost** - causará error 502 en Easypanel
 
+**Configuración crítica en Easypanel:**
+- **Puerto de aplicación:** DEBE estar configurado en `3000` (Settings → General → Port o App Port)
+- Si está configurado en 80 u otro puerto → Error 502 (proxy no puede conectar)
+- El Dockerfile expone el puerto 3000 (`EXPOSE 3000`) - Easypanel debe coincidir con este puerto
+
 **Acceso a logs en producción:**
 1. Acceder a Easypanel web interface
 2. Seleccionar el proyecto/servicio
