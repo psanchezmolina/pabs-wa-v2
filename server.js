@@ -23,6 +23,13 @@ const PORT = process.env.PORT || 3000;
 // This allows express-rate-limit to correctly identify client IPs
 app.set('trust proxy', 1);
 
+// DEBUG: Log redirect URI at startup (TEMPORARY)
+logger.info('🔍 OAuth configuration check', {
+  GHL_REDIRECT_URI: config.GHL_REDIRECT_URI,
+  GHL_CLIENT_ID: config.GHL_CLIENT_ID ? 'configured' : 'MISSING',
+  PORT: PORT
+});
+
 // Security headers
 app.use(helmet({
   contentSecurityPolicy: {
