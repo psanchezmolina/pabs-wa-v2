@@ -145,50 +145,101 @@ BRAND_NAME=Pabs.ai  # Nombre de marca mostrado en panel de conexión (opcional)
 
 ### Table: `clients_details`
 
+**Estructura completa:**
+
+```sql
+CREATE TABLE clients_details (
+    id BIGSERIAL PRIMARY KEY,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    location_id VARCHAR(255) NOT NULL UNIQUE,
+    instance_name VARCHAR(255) NOT NULL,
+    instance_apikey VARCHAR(255) NOT NULL,
+    instance_sender VARCHAR(255),
+    conversation_provider_id VARCHAR(255) DEFAULT '690f3c36cc3a9220c22aa883',
+    ghl_access_token TEXT,
+    ghl_refresh_token TEXT,
+    ghl_token_expiry TIMESTAMPTZ,
+    is_beta BOOLEAN NOT NULL DEFAULT FALSE,
+    langfuse_public_key VARCHAR,
+    langfuse_secret_key VARCHAR,
+    last_connected_at TIMESTAMPTZ
+);
+```
+
 **Columnas clave:**
 
-- `location_id` (VARCHAR, UNIQUE) - Identificador de ubicación GHL, usado en webhooks
-- `instance_name` (VARCHAR) - Nombre de instancia de Evolution API
-- `instance_apikey` (VARCHAR) - Clave API de Evolution
-- `instance_sender` (VARCHAR) - Formato de número de WhatsApp: `34XXX@s.whatsapp.net`
-- `conversation_provider_id` (VARCHAR) - ID de proveedor de conversación GHL
-- `ghl_access_token` (TEXT) - Token de acceso OAuth
-- `ghl_refresh_token` (TEXT) - Token de refresco OAuth
-- `ghl_token_expiry` (TIMESTAMPTZ) - Expiración del token
-- `last_connected_at` (TIMESTAMPTZ) - Timestamp de última conexión exitosa de WhatsApp
-- `is_beta` (BOOLEAN, DEFAULT false) - Flag para clientes en programa beta
-- `langfuse_public_key` (VARCHAR) - Langfuse Public Key del proyecto del cliente (pk-lf-...)
-- `langfuse_secret_key` (VARCHAR) - Langfuse Secret Key del proyecto del cliente (sk-lf-...)
+- `id` (BIGSERIAL PRIMARY KEY) - Identificador único auto-incremental
+- `created_at` (TIMESTAMPTZ NOT NULL) - Timestamp de creación
+- `updated_at` (TIMESTAMPTZ NOT NULL) - Timestamp de última actualización
+- `location_id` (VARCHAR(255) NOT NULL UNIQUE) - Identificador de ubicación GHL, usado en webhooks
+- `instance_name` (VARCHAR(255) NOT NULL) - Nombre de instancia de Evolution API
+- `instance_apikey` (VARCHAR(255) NOT NULL) - Clave API de Evolution
+- `instance_sender` (VARCHAR(255) NULL) - Formato de número de WhatsApp: `34XXX@s.whatsapp.net`
+- `conversation_provider_id` (VARCHAR(255) NULL) - ID de proveedor de conversación GHL (default: '690f3c36cc3a9220c22aa883')
+- `ghl_access_token` (TEXT NULL) - Token de acceso OAuth
+- `ghl_refresh_token` (TEXT NULL) - Token de refresco OAuth
+- `ghl_token_expiry` (TIMESTAMPTZ NULL) - Expiración del token
+- `is_beta` (BOOLEAN NOT NULL) - Flag para clientes en programa beta (default: false)
+- `langfuse_public_key` (VARCHAR NULL) - Langfuse Public Key del proyecto del cliente (pk-lf-...)
+- `langfuse_secret_key` (VARCHAR NULL) - Langfuse Secret Key del proyecto del cliente (sk-lf-...)
+- `last_connected_at` (TIMESTAMPTZ NULL) - Timestamp de última conexión exitosa de WhatsApp
 
-**Columnas ignoradas:** `openai_apikey`, `is_active`, `webhook_secret`
-
-**Índices:** `location_id`, `instance_name`
+**Índices:**
+- `clients_details_pkey` - PRIMARY KEY on `id`
+- `clients_details_location_id_key` - UNIQUE INDEX on `location_id`
+- `idx_location_id` - INDEX on `location_id`
+- `idx_instance_name` - INDEX on `instance_name`
+- `idx_clients_last_connected` - INDEX on `last_connected_at`
 
 **Seguridad:**
 - RLS (Row Level Security) activado
-- Política: "Allow authenticated access" permite acceso con anon key
-- No requiere service_role key
+- Política: "Allow all access" - Acceso total para `public` role
+- Funciona con anon key, no requiere service_role key
 
 ### Table: `agent_configs`
 
+**Estructura completa:**
+
+```sql
+CREATE TABLE agent_configs (
+    id SERIAL PRIMARY KEY,
+    location_id VARCHAR NOT NULL,
+    agent_name VARCHAR NOT NULL,
+    flowise_webhook_url TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    flowise_api_key TEXT,
+    CONSTRAINT agent_configs_location_id_agent_name_key UNIQUE (location_id, agent_name),
+    CONSTRAINT fk_agent_configs_location FOREIGN KEY (location_id)
+        REFERENCES clients_details(location_id) ON DELETE CASCADE
+);
+```
+
 **Columnas:**
 
-- `id` (SERIAL PRIMARY KEY)
+- `id` (SERIAL PRIMARY KEY) - Identificador único auto-incremental
 - `location_id` (VARCHAR NOT NULL) - Identificador de ubicación GHL
 - `agent_name` (VARCHAR NOT NULL) - Nombre del agente (ej: "agente-roi")
 - `flowise_webhook_url` (TEXT NOT NULL) - URL completa del webhook de Flowise
-- `flowise_api_key` (TEXT) - API key de Flowise (opcional, ej: "Bearer xxx")
-- `created_at` (TIMESTAMPTZ DEFAULT NOW())
-- `updated_at` (TIMESTAMPTZ DEFAULT NOW())
+- `created_at` (TIMESTAMPTZ NULL) - Timestamp de creación (default: NOW())
+- `updated_at` (TIMESTAMPTZ NULL) - Timestamp de última actualización (default: NOW())
+- `flowise_api_key` (TEXT NULL) - API key de Flowise (opcional, ej: "Bearer xxx")
 
 **Constraints:**
-- `UNIQUE(location_id, agent_name)`
-- `FOREIGN KEY (location_id) REFERENCES clients_details(location_id) ON DELETE CASCADE`
+- `agent_configs_location_id_agent_name_key` - UNIQUE(location_id, agent_name)
+- `fk_agent_configs_location` - FOREIGN KEY (location_id) REFERENCES clients_details(location_id) ON DELETE CASCADE
+
+**Índices:**
+- `agent_configs_pkey` - PRIMARY KEY on `id`
+- `agent_configs_location_id_agent_name_key` - UNIQUE INDEX on `(location_id, agent_name)`
+- `idx_agent_configs_location_id` - INDEX on `location_id`
+- `idx_agent_configs_lookup` - INDEX on `(location_id, agent_name)`
 
 **Seguridad:**
 - RLS (Row Level Security) activado
-- Política: "Allow authenticated access" permite acceso con anon key
-- No requiere service_role key
+- Política: "Allow authenticated access" - Solo roles `authenticated` y `anon`
+- Funciona con anon key, no requiere service_role key
 
 **Propósito:** Configuración de agentes conversacionales con IA para el sistema de agentes.
 
@@ -732,6 +783,11 @@ Cuando implementes nuevas funcionalidades o fixes, sigue este proceso:
 - **Panel de control:** Easypanel
 - **Contenedor:** Docker
 - **URL del servidor:** Se configura en Easypanel
+
+**Configuración crítica de servidor:**
+- El servidor DEBE escuchar en `0.0.0.0` (no localhost) para funcionar en Docker
+- Esto está configurado en `server.js:534`: `app.listen(PORT, '0.0.0.0')`
+- **NUNCA cambiar a localhost** - causará error 502 en Easypanel
 
 **Acceso a logs en producción:**
 1. Acceder a Easypanel web interface

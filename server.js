@@ -531,8 +531,8 @@ function gracefulShutdown(signal) {
   }, 30000);
 }
 
-server = app.listen(PORT, () => {
-  logger.info(`Server running on port ${PORT}`);
+server = app.listen(PORT, '0.0.0.0', () => {
+  logger.info(`Server running on port ${PORT} (bound to 0.0.0.0)`);
 
   // Iniciar monitor de instancias (cada 2 horas - backup, webhooks CONNECTION_UPDATE son primarios)
   const { startMonitoring } = require('./utils/instanceMonitor');
