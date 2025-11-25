@@ -19,8 +19,9 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Trust proxy - Required for Easypanel/Docker deployment
-// Allows express-rate-limit to correctly identify client IPs behind reverse proxy
-app.set('trust proxy', true);
+// Set to 1 to trust only the first proxy (Easypanel reverse proxy)
+// This allows express-rate-limit to correctly identify client IPs
+app.set('trust proxy', 1);
 
 // Security headers
 app.use(helmet({
