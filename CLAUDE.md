@@ -786,8 +786,11 @@ Cuando implementes nuevas funcionalidades o fixes, sigue este proceso:
 
 **Configuración crítica de servidor:**
 - El servidor DEBE escuchar en `0.0.0.0` (no localhost) para funcionar en Docker
-- Esto está configurado en `server.js:534`: `app.listen(PORT, '0.0.0.0')`
+- Esto está configurado en `server.js:537`: `app.listen(PORT, '0.0.0.0')`
 - **NUNCA cambiar a localhost** - causará error 502 en Easypanel
+- **Trust Proxy habilitado:** `app.set('trust proxy', true)` (server.js:23)
+  - Requerido para que express-rate-limit funcione correctamente detrás del proxy de Easypanel
+  - Sin esto, OAuth y endpoints con rate limiting fallarán con error `ERR_ERL_UNEXPECTED_X_FORWARDED_FOR`
 
 **Configuración crítica en Easypanel:**
 - **Puerto de aplicación:** DEBE estar configurado en `3000` (Settings → General → Port o App Port)

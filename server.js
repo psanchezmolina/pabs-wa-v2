@@ -18,6 +18,10 @@ const supabase = createClient(config.SUPABASE_URL, config.SUPABASE_KEY);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Trust proxy - Required for Easypanel/Docker deployment
+// Allows express-rate-limit to correctly identify client IPs behind reverse proxy
+app.set('trust proxy', true);
+
 // Security headers
 app.use(helmet({
   contentSecurityPolicy: {
