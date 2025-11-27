@@ -18,10 +18,6 @@ const supabase = createClient(config.SUPABASE_URL, config.SUPABASE_KEY);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Trust proxy - Required for Easypanel/Docker deployment
-// COMMENTED OUT TEMPORARILY TO TEST IF THIS BREAKS OAUTH
-// app.set('trust proxy', 1);
-
 // DEBUG: Log redirect URI at startup (TEMPORARY)
 logger.info('🔍 OAuth configuration check', {
   GHL_REDIRECT_URI: config.GHL_REDIRECT_URI,

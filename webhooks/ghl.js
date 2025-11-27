@@ -8,11 +8,11 @@ const messageCache = require('../services/messageCache');
 
 async function handleGHLWebhook(req, res) {
   // Log COMPLETO del webhook para debugging
-  // logger.info('🔔 GHL WEBHOOK RECEIVED', {
-  //   body: req.body,
-  //   headers: req.headers,
-  //   method: req.method
-  // });
+  logger.info('🔔 GHL WEBHOOK RECEIVED', {
+    body: req.body,
+    headers: req.headers,
+    method: req.method
+  });
 
   try {
     // Validar payload
@@ -32,17 +32,17 @@ async function handleGHLWebhook(req, res) {
     // El texto puede venir como 'body' o 'message'
     const messageText = req.body.body || req.body.message;
 
-    // logger.info('✅ GHL webhook validated', { locationId, contactId, messageId, messageText });
+    logger.info('✅ GHL webhook validated', { locationId, contactId, messageId, messageText });
 
     // Obtener cliente (viene de middleware o buscar en BD como fallback)
     const client = req.client || await getClientByLocationId(locationId);
 
-    // logger.info('Client found', {
-    //   locationId,
-    //   instanceName: client.instance_name,
-    //   hasApiKey: !!client.instance_apikey,
-    //   fromCache: !!req.client
-    // });
+    logger.info('Client found', {
+      locationId,
+      instanceName: client.instance_name,
+      hasApiKey: !!client.instance_apikey,
+      fromCache: !!req.client
+    });
 
     // Obtener teléfono del contacto
     let contactPhone;
@@ -50,13 +50,13 @@ async function handleGHLWebhook(req, res) {
     if (req.body.phone) {
       // El webhook nuevo trae el teléfono directamente
       contactPhone = req.body.phone;
-      // logger.info('Phone from webhook', { contactPhone });
+      logger.info('Phone from webhook', { contactPhone });
     } else {
       // El webhook antiguo requiere obtenerlo de GHL API
-      // logger.info('Fetching contact from GHL', { contactId });
+      logger.info('Fetching contact from GHL', { contactId });
       const contact = await ghlAPI.getContact(client, contactId);
       contactPhone = contact.phone;
-      // logger.info('Contact retrieved', { contactId, contactPhone });
+      logger.info('Contact retrieved', { contactId, contactPhone });
     }
 
     // Formatear número WhatsApp
@@ -65,22 +65,22 @@ async function handleGHLWebhook(req, res) {
     // Dividir mensaje si es muy largo (GHL → WhatsApp)
     const messageParts = splitMessage(messageText);
 
-    // if (messageParts.length > 1) {
-    //   logger.info('📝 Message split into multiple parts', {
-    //     totalParts: messageParts.length,
-    //     originalLength: messageText.length,
-    //     locationId
-    //   });
-    // }
+    if (messageParts.length > 1) {
+      logger.info('📝 Message split into multiple parts', {
+        totalParts: messageParts.length,
+        originalLength: messageText.length,
+        locationId
+      });
+    }
 
     try {
       // Enviar mensaje(s) a WhatsApp
-      // logger.info('Sending to Evolution API', {
-      //   instanceName: client.instance_name,
-      //   waNumber,
-      //   parts: messageParts.length,
-      //   messageLength: messageText.length
-      // });
+      logger.info('Sending to Evolution API', {
+        instanceName: client.instance_name,
+        waNumber,
+        parts: messageParts.length,
+        messageLength: messageText.length
+      });
 
       // Enviar cada parte como mensaje separado
       for (let i = 0; i < messageParts.length; i++) {
@@ -91,21 +91,21 @@ async function handleGHLWebhook(req, res) {
           messageParts[i]
         );
 
-        // if (messageParts.length > 1) {
-        //   logger.info(`✅ Sent part ${i + 1}/${messageParts.length}`);
+        if (messageParts.length > 1) {
+          logger.info(`✅ Sent part ${i + 1}/${messageParts.length}`);
+        }
 
-          // Pequeño delay entre mensajes (500ms) para mantener el orden
-          if (i < messageParts.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, 500));
-          }
-        // }
+        // Pequeño delay entre mensajes (500ms) para mantener el orden
+        if (i < messageParts.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
       }
 
-      // logger.info('✅ Message sent to WhatsApp successfully', {
-      //   locationId,
-      //   waNumber,
-      //   totalParts: messageParts.length
-      // });
+      logger.info('✅ Message sent to WhatsApp successfully', {
+        locationId,
+        waNumber,
+        totalParts: messageParts.length
+      });
 
       // Intentar marcar como entregado en GHL (no crítico si falla)
       try {
