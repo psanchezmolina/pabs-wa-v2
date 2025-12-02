@@ -113,10 +113,11 @@ function parseFlowiseResponse(flowiseData) {
       hasParte3: !!parsed.parte3
     });
 
+    // Convertir \n literales en saltos de línea reales
     return {
-      parte1: parsed.parte1 || null,
-      parte2: parsed.parte2 || null,
-      parte3: parsed.parte3 || null
+      parte1: parsed.parte1 ? parsed.parte1.replace(/\\n/g, '\n') : null,
+      parte2: parsed.parte2 ? parsed.parte2.replace(/\\n/g, '\n') : null,
+      parte3: parsed.parte3 ? parsed.parte3.replace(/\\n/g, '\n') : null
     };
   } catch (e1) {
     logger.debug('Parse attempt 1 failed, trying cleanup...', { error: e1.message });
@@ -142,10 +143,11 @@ function parseFlowiseResponse(flowiseData) {
       hasParte3: !!parsed.parte3
     });
 
+    // Convertir \n literales en saltos de línea reales
     return {
-      parte1: parsed.parte1 || null,
-      parte2: parsed.parte2 || null,
-      parte3: parsed.parte3 || null
+      parte1: parsed.parte1 ? parsed.parte1.replace(/\\n/g, '\n') : null,
+      parte2: parsed.parte2 ? parsed.parte2.replace(/\\n/g, '\n') : null,
+      parte3: parsed.parte3 ? parsed.parte3.replace(/\\n/g, '\n') : null
     };
   } catch (e2) {
     logger.debug('Parse attempt 2 failed, using fallback...', { error: e2.message });

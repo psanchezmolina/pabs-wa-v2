@@ -78,5 +78,25 @@ describe('Flowise Service', () => {
 
       expect(result.parte1).to.include('Error');
     });
+
+    it('should convert literal \\n strings to actual newlines', () => {
+      const mockResponse = [{
+        text: JSON.stringify({
+          parte1: '¿Te vendrían bien las siguientes horas?',
+          parte2: '📅 Mañana a las 10:00 AM\\n📅 Mañana a las 11:00 AM\\n📅 Mañana a las 12:00 PM',
+          parte3: '¿Cuál te viene mejor?'
+        })
+      }];
+
+      const result = parseFlowiseResponse(mockResponse);
+
+      expect(result.parte1).to.equal('¿Te vendrían bien las siguientes horas?');
+      expect(result.parte2).to.equal('📅 Mañana a las 10:00 AM\n📅 Mañana a las 11:00 AM\n📅 Mañana a las 12:00 PM');
+      expect(result.parte3).to.equal('¿Cuál te viene mejor?');
+
+      // Verificar que contiene saltos de línea reales, no strings literales
+      expect(result.parte2).to.not.include('\\n');
+      expect(result.parte2.split('\n').length).to.equal(3);
+    });
   });
 });
