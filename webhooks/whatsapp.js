@@ -55,18 +55,20 @@ async function handleWhatsAppWebhook(req, res) {
   // MANEJAR MENSAJES (flujo normal)
   // ============================================================================
 
-  // Detectar si es el número de debug para logging
-  const debugNumber = '34660722687@s.whatsapp.net';
-  const isDebugNumber = req.body?.data?.key?.remoteJid === debugNumber;
-
-  // Solo logear si es el número de debug - DESACTIVADO temporalmente para debugging agent
-  const log = { info: () => {}, warn: () => {}, error: logger.error };
+  // Logging activado para todos los mensajes (diagnóstico de mensajes perdidos)
+  const log = logger;
 
   try {
     // Validar payload
     const validation = validateWhatsAppPayload(req.body);
     if (!validation.valid) {
-      log.warn('❌ Invalid WhatsApp payload', { reason: validation.reason || validation.missing });
+      logger.warn('❌ Invalid WhatsApp payload - mensaje descartado', {
+        reason: validation.reason || validation.missing,
+        instance: req.body?.instance,
+        event: req.body?.event,
+        hasData: !!req.body?.data,
+        validation
+      });
       return res.status(400).json({ error: 'Invalid payload', details: validation });
     }
 
@@ -219,11 +221,25 @@ async function handleWhatsAppWebhook(req, res) {
       log.info('😊 Sticker message detected');
 
     } else {
-      log.warn('❌ Unsupported message type', {
+      // Tipo de mensaje no soportado - IMPORTANTE: Loguear y notificar
+      logger.error('❌ Unsupported message type - mensaje descartado', {
+        instance,
+        remoteJid: messageData.key.remoteJid,
+        messageId: messageData.key.id,
         messageTypes: Object.keys(messageData.message),
         messageData: JSON.stringify(messageData.message, null, 2)
       });
-      return res.status(200).json({ success: true, ignored: true });
+
+      // Notificar al admin para que sepa que se están perdiendo mensajes
+      await notifyAdmin('Mensaje WhatsApp No Soportado', {
+        instance_name: instance,
+        remoteJid: messageData.key.remoteJid,
+        messageId: messageData.key.id,
+        messageTypes: Object.keys(messageData.message).join(', '),
+        note: 'Este tipo de mensaje no está implementado y se está descartando'
+      });
+
+      return res.status(200).json({ success: true, ignored: true, reason: 'Unsupported message type' });
     }
 
     log.info('✅ Step 3 COMPLETE: Message processed', { contentType, messageText: messageText.substring(0, 100) });
