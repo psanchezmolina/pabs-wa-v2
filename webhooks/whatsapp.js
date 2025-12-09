@@ -9,11 +9,31 @@ const { getCachedContactId, setCachedContactId, getCachedConversationId, setCach
 const { attemptAutoRestart, processQueuedMessages } = require('../utils/instanceMonitor');
 
 async function handleWhatsAppWebhook(req, res) {
+  const startTime = Date.now();
+
   // ============================================================================
-  // MANEJAR EVENTOS DE CONEXIÓN (CONNECTION_UPDATE) - Detección en tiempo real
+  // LOGGING INICIAL - Captura SIEMPRE (para diagnóstico de mensajes perdidos)
   // ============================================================================
   const event = req.body?.event;
   const instanceName = req.body?.instance;
+  const remoteJid = req.body?.data?.key?.remoteJid;
+  const messageId = req.body?.data?.key?.id;
+  const fromMe = req.body?.data?.key?.fromMe;
+
+  // Log de entrada SIEMPRE (incluso si falla validación después)
+  logger.info('📥 Webhook received', {
+    event,
+    instanceName,
+    remoteJid,
+    messageId,
+    fromMe,
+    timestamp: new Date().toISOString(),
+    payloadSize: JSON.stringify(req.body).length
+  });
+
+  // ============================================================================
+  // MANEJAR EVENTOS DE CONEXIÓN (CONNECTION_UPDATE) - Detección en tiempo real
+  // ============================================================================
 
   if (event === 'connection.update') {
     const state = req.body?.data?.state;
@@ -364,15 +384,34 @@ async function handleWhatsAppWebhook(req, res) {
       direction,
       totalParts: messageParts.length
     });
-    
+
+    // Log final de éxito con timing
+    const processingTime = Date.now() - startTime;
+    logger.info('✅ Webhook processed successfully', {
+      instanceName: instance,
+      remoteJid,
+      messageId,
+      contactId,
+      conversationId,
+      direction,
+      contentType,
+      processingTimeMs: processingTime,
+      location_id: client.location_id
+    });
+
     return res.status(200).json({ success: true });
     
   } catch (error) {
+    const processingTime = Date.now() - startTime;
     logger.error('❌ WhatsApp webhook error', {
       error: error.message,
       stack: error.stack,
-      instance: req.body?.instance,
-      remoteJid: req.body?.data?.key?.remoteJid
+      instance: instanceName,
+      remoteJid,
+      messageId,
+      fromMe,
+      processingTimeMs: processingTime,
+      timestamp: new Date().toISOString()
     });
 
     await notifyAdmin('WhatsApp Webhook Error', {
