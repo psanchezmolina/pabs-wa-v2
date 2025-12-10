@@ -538,9 +538,20 @@ CREATE TABLE agent_configs (
 
 **Nota sobre `message.type`:**
 - `message.type` es **opcional** - útil para webhooks de inicio de conversación desde workflows
-- Si `message.type` **existe**: usa el valor (puede ser string "SMS"/"IG"/"FB" o número 20/18/11)
+- Si `message.type` **existe**: usa el valor (puede ser string o número)
 - Si `message.type` **NO existe**: canal por defecto = **SMS**
 - Webhooks de trigger manual (inicio conversación) típicamente no incluyen `message.type`
+
+**Mapeo de tipos de mensaje (GHL):**
+| Tipo | Canal | Descripción |
+|------|-------|-------------|
+| 20 | SMS | Mensajes de texto |
+| 19 | WhatsApp | API oficial de WhatsApp |
+| 18 | IG | Instagram Direct |
+| 11 | FB | Facebook Messenger |
+| 29 | Web | Chat widget del sitio web |
+
+Si se recibe un tipo desconocido, se mapea como "Unknown" y se loguea un warning
 
 **Flowise payload completo:**
 

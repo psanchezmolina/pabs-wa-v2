@@ -185,6 +185,8 @@ async function createConversation(client, contactId) {
 }
 
 async function registerMessage(client, conversationId, contactId, message, direction) {
+  // Axios con Content-Type: application/json hace JSON.stringify() automático
+  // Los saltos de línea se escapan correctamente
   await ghlRequest(client, 'POST', '/conversations/messages/inbound', {
     type: 'SMS',
     message,

@@ -45,14 +45,29 @@ async function handleAgentWebhook(req, res) {
     // Mapear message.type numérico a string (valores verificados de GHL)
     const typeMap = {
       20: 'SMS',
+      19: 'WhatsApp',  // API oficial de WhatsApp
       18: 'IG',
-      11: 'FB'
+      11: 'FB',
+      29: 'Web'        // Web Chat (widget del sitio)
     };
 
     // Derivar canal: si no hay message.type, siempre es SMS (webhooks de inicio)
-    const canal = message.type
-      ? (typeof message.type === 'number' ? typeMap[message.type] : message.type)
-      : 'SMS';  // Sin message.type = trigger manual = SMS
+    let canal;
+    if (!message.type) {
+      canal = 'SMS';  // Sin message.type = trigger manual = SMS
+    } else if (typeof message.type === 'number') {
+      canal = typeMap[message.type] || 'Unknown';
+      // Log warning si tipo desconocido
+      if (!typeMap[message.type]) {
+        logger.warn('⚠️ Unknown message.type detected', {
+          type: message.type,
+          location_id,
+          agente
+        });
+      }
+    } else {
+      canal = message.type;
+    }
 
     // Cliente viene del middleware (ya validado)
     const client = req.client;
