@@ -42,13 +42,13 @@ async function handleAgentWebhook(req, res) {
     // Extraer tags (puede venir como string o array)
     const tags = req.body.tags || '';
 
-    // Mapear message.type numérico a string (valores verificados de GHL)
+    // Mapear message.type numérico a string (valores de GHL API)
     const typeMap = {
       20: 'SMS',
-      19: 'WhatsApp',  // API oficial de WhatsApp
+      19: 'WhatsApp',
       18: 'IG',
       11: 'FB',
-      29: 'Web'        // Web Chat (widget del sitio)
+      29: 'Live_Chat'  // Web Chat (widget del sitio)
     };
 
     // Derivar canal: si no hay message.type, siempre es SMS (webhooks de inicio)

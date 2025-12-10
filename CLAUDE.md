@@ -549,7 +549,9 @@ CREATE TABLE agent_configs (
 | 19 | WhatsApp | API oficial de WhatsApp |
 | 18 | IG | Instagram Direct |
 | 11 | FB | Facebook Messenger |
-| 29 | Web | Chat widget del sitio web |
+| 29 | Live_Chat | Chat widget del sitio web |
+
+**Nota:** Los valores mapeados coinciden con los tipos válidos del GHL API (`/conversations/messages`): SMS, Email, WhatsApp, IG, FB, Custom, Live_Chat, InternalComment.
 
 Si se recibe un tipo desconocido, se mapea como "Unknown" y se loguea un warning
 
