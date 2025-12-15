@@ -41,8 +41,22 @@ async function handleGHLWebhook(req, res) {
       locationId,
       instanceName: client.instance_name,
       hasApiKey: !!client.instance_apikey,
+      provider: client.whatsapp_provider,
       fromCache: !!req.client
     });
+
+    // ✅ Si usa API oficial, GHL maneja el envío directamente
+    if (client.whatsapp_provider === 'official') {
+      logger.info('⏩ Client uses official API - skipping send (GHL handles it)', {
+        locationId,
+        provider: client.whatsapp_provider
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: 'Client uses official WhatsApp API - handled by GHL directly'
+      });
+    }
 
     // Obtener teléfono del contacto
     let contactPhone;

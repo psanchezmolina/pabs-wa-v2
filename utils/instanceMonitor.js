@@ -21,10 +21,11 @@ async function checkAllInstances() {
   logger.info('🔍 Starting instance connection check...');
 
   try {
-    // Obtener todas las instancias únicas de la BD
+    // Obtener todas las instancias únicas de la BD (solo Evolution)
     const { data: instances, error } = await supabase
       .from('clients_details')
       .select('instance_name, instance_apikey, location_id')
+      .eq('whatsapp_provider', 'evolution')  // ✅ Solo clientes Evolution
       .not('instance_name', 'is', null)
       .not('instance_apikey', 'is', null);
 
@@ -277,10 +278,11 @@ async function processAllPendingMessages() {
     instancesWithPending: instances.length
   });
 
-  // Obtener API keys de la BD
+  // Obtener API keys de la BD (solo Evolution)
   const { data: clientsData, error } = await supabase
     .from('clients_details')
     .select('instance_name, instance_apikey')
+    .eq('whatsapp_provider', 'evolution')  // ✅ Solo clientes Evolution
     .in('instance_name', instances);
 
   if (error) {

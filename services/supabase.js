@@ -11,14 +11,15 @@ function cleanClient(client) {
   return {
     ...client,
     location_id: client.location_id?.trim(),
-    instance_name: client.instance_name?.trim(),
-    instance_apikey: client.instance_apikey?.trim(),
-    instance_sender: client.instance_sender?.trim(),
+    instance_name: client.instance_name?.trim() || null, // Preservar NULL si está vacío
+    instance_apikey: client.instance_apikey?.trim() || null, // Preservar NULL si está vacío
+    instance_sender: client.instance_sender?.trim() || null, // Preservar NULL si está vacío
     conversation_provider_id: client.conversation_provider_id?.trim(),
     ghl_access_token: client.ghl_access_token?.trim(),
     ghl_refresh_token: client.ghl_refresh_token?.trim(),
     langfuse_public_key: client.langfuse_public_key?.trim(),
     langfuse_secret_key: client.langfuse_secret_key?.trim(),
+    whatsapp_provider: client.whatsapp_provider?.trim() || 'evolution', // Default a 'evolution'
     // is_beta es booleano, no necesita limpieza - se preserva automáticamente
     is_beta: client.is_beta ?? false // Fallback a false si no existe
   };

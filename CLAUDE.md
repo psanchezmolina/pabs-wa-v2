@@ -153,8 +153,9 @@ CREATE TABLE clients_details (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     location_id VARCHAR(255) NOT NULL UNIQUE,
-    instance_name VARCHAR(255) NOT NULL,
-    instance_apikey VARCHAR(255) NOT NULL,
+    whatsapp_provider VARCHAR(20) NOT NULL DEFAULT 'evolution' CHECK (whatsapp_provider IN ('evolution', 'official')),
+    instance_name VARCHAR(255),
+    instance_apikey VARCHAR(255),
     instance_sender VARCHAR(255),
     conversation_provider_id VARCHAR(255) DEFAULT '690f3c36cc3a9220c22aa883',
     ghl_access_token TEXT,
@@ -173,9 +174,10 @@ CREATE TABLE clients_details (
 - `created_at` (TIMESTAMPTZ NOT NULL) - Timestamp de creación
 - `updated_at` (TIMESTAMPTZ NOT NULL) - Timestamp de última actualización
 - `location_id` (VARCHAR(255) NOT NULL UNIQUE) - Identificador de ubicación GHL, usado en webhooks
-- `instance_name` (VARCHAR(255) NOT NULL) - Nombre de instancia de Evolution API
-- `instance_apikey` (VARCHAR(255) NOT NULL) - Clave API de Evolution
-- `instance_sender` (VARCHAR(255) NULL) - Formato de número de WhatsApp: `34XXX@s.whatsapp.net`
+- `whatsapp_provider` (VARCHAR(20) NOT NULL) - Tipo de provider WhatsApp: 'evolution' (Evolution API) o 'official' (WhatsApp API Oficial vía GHL) (default: 'evolution')
+- `instance_name` (VARCHAR(255) NULL) - Nombre de instancia de Evolution API (NULL si provider='official')
+- `instance_apikey` (VARCHAR(255) NULL) - Clave API de Evolution (NULL si provider='official')
+- `instance_sender` (VARCHAR(255) NULL) - Formato de número de WhatsApp: `34XXX@s.whatsapp.net` (NULL si provider='official')
 - `conversation_provider_id` (VARCHAR(255) NULL) - ID de proveedor de conversación GHL (default: '690f3c36cc3a9220c22aa883')
 - `ghl_access_token` (TEXT NULL) - Token de acceso OAuth
 - `ghl_refresh_token` (TEXT NULL) - Token de refresco OAuth
@@ -183,7 +185,7 @@ CREATE TABLE clients_details (
 - `is_beta` (BOOLEAN NOT NULL) - Flag para clientes en programa beta (default: false)
 - `langfuse_public_key` (VARCHAR NULL) - Langfuse Public Key del proyecto del cliente (pk-lf-...)
 - `langfuse_secret_key` (VARCHAR NULL) - Langfuse Secret Key del proyecto del cliente (sk-lf-...)
-- `last_connected_at` (TIMESTAMPTZ NULL) - Timestamp de última conexión exitosa de WhatsApp
+- `last_connected_at` (TIMESTAMPTZ NULL) - Timestamp de última conexión exitosa de WhatsApp (solo para provider='evolution')
 
 **Índices:**
 - `clients_details_pkey` - PRIMARY KEY on `id`
@@ -242,6 +244,91 @@ CREATE TABLE agent_configs (
 - Funciona con anon key, no requiere service_role key
 
 **Propósito:** Configuración de agentes conversacionales con IA para el sistema de agentes.
+
+---
+
+## WhatsApp Providers: Evolution API vs API Oficial
+
+El sistema soporta **dos tipos de providers** para WhatsApp:
+
+### **1. Evolution API (Default)**
+- **Uso:** Mayoría de clientes actuales
+- **Cómo funciona:** GHL envía webhooks a tu servidor → Servidor envía vía Evolution API
+- **Configuración BD:**
+  ```sql
+  INSERT INTO clients_details (
+    location_id,
+    whatsapp_provider,
+    instance_name,
+    instance_apikey,
+    ghl_access_token,
+    ghl_refresh_token,
+    ghl_token_expiry
+  ) VALUES (
+    'xxx',
+    'evolution',  -- Tipo de provider
+    'nombre-instancia',
+    'api-key-xxx',
+    'token...',
+    'refresh...',
+    '2025-...'
+  );
+  ```
+- **Flujo mensajería:**
+  - **GHL → WhatsApp**: GHL webhook → `/webhook/ghl` → Evolution API → WhatsApp
+  - **WhatsApp → GHL**: WhatsApp → Evolution API → `/webhook/whatsapp` → GHL API
+- **Monitoreo:** ✅ Instance monitor verifica estado cada 2h, auto-restart si se desconecta
+- **Panel conexión:** ✅ Acceso a `/panel/` para escanear QR/Pairing code
+
+### **2. WhatsApp API Oficial (Nuevo)**
+- **Uso:** Clientes que prefieren API oficial de Meta/Facebook vía GHL
+- **Cómo funciona:** GHL se conecta directamente con WhatsApp API Oficial (sin pasar por tu servidor para mensajería)
+- **Configuración BD:**
+  ```sql
+  INSERT INTO clients_details (
+    location_id,
+    whatsapp_provider,
+    instance_name,
+    instance_apikey,
+    instance_sender,
+    ghl_access_token,
+    ghl_refresh_token,
+    ghl_token_expiry
+  ) VALUES (
+    'xxx',
+    'official',  -- Tipo de provider
+    NULL,        -- No usa Evolution
+    NULL,        -- No usa Evolution
+    NULL,        -- No usa Evolution
+    'token...',
+    'refresh...',
+    '2025-...'
+  );
+  ```
+- **Flujo mensajería:**
+  - **GHL → WhatsApp**: GHL → WhatsApp API Oficial (directo, no pasa por tu servidor)
+  - **WhatsApp → GHL**: WhatsApp API Oficial → GHL (directo, no pasa por tu servidor)
+  - **Agent System**: GHL → `/webhook/agent` → Tu servidor → Flowise → Respuesta registrada en GHL ✅
+- **Monitoreo:** ❌ No monitoreable (GHL maneja conexión)
+- **Panel conexión:** ❌ Muestra mensaje: "Esta cuenta usa la API Oficial. Para gestionar la conexión, debe ir a Configuración → WhatsApp"
+
+### **¿Cuándo usar cada uno?**
+
+| Característica | Evolution API | API Oficial |
+|----------------|---------------|-------------|
+| **Coste** | Gratis (self-hosted) | Pago por mensaje (Meta) |
+| **Límites** | Sin límites oficiales | Límites de Meta |
+| **Estabilidad** | Depende de Evolution | Más estable (oficial) |
+| **Verificación** | Sin verificación | Puede verificar número |
+| **Agent System** | ✅ Soportado | ✅ Soportado |
+| **Monitoreo** | ✅ Auto-restart | ❌ GHL maneja |
+| **Setup** | Panel QR/Pairing | GHL UI |
+
+### **Importante:**
+
+- **Agent System funciona con AMBOS providers** - El webhook `/webhook/agent` recibe mensajes de GHL y funciona igual independientemente del provider
+- **No mezclar providers** - Cada cliente usa UN solo provider (evolution o official)
+- **Webhooks GHL outbound** - Solo configurar para clientes Evolution (los clientes Official no lo necesitan)
 
 ---
 

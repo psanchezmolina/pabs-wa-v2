@@ -112,6 +112,15 @@ app.get('/panel/status/:locationId', async (req, res) => {
       });
     }
 
+    // ✅ Si usa API oficial, mostrar mensaje apropiado
+    if (client.whatsapp_provider === 'official') {
+      return res.json({
+        state: 'official',
+        message: 'Esta cuenta usa la API Oficial. Para gestionar la conexión, debe ir a "Configuración → WhatsApp"',
+        provider: 'official'
+      });
+    }
+
     const stateData = await getConnectionState(client.instance_name, client.instance_apikey);
     const state = stateData.instance?.state || 'unknown';
 
