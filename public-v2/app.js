@@ -14,7 +14,9 @@
   const statusConnected = document.getElementById('status-connected');
   const statusDisconnected = document.getElementById('status-disconnected');
   const statusError = document.getElementById('status-error');
+  const statusOfficial = document.getElementById('status-official');
   const errorMessage = document.getElementById('error-message');
+  const officialMessage = document.getElementById('official-message');
 
   const connectionMethods = document.getElementById('connection-methods');
   const pollingStatus = document.getElementById('polling-status');
@@ -192,15 +194,31 @@
   }
 
   function updateStatus(data) {
-    const { state, phoneNumber, lastConnectedAt } = data;
+    const { state, phoneNumber, lastConnectedAt, message } = data;
 
     // Hide loading
     statusLoading.style.display = 'none';
 
-    if (state === 'open') {
+    if (state === 'official') {
+      // Official API - Show info message
+      statusConnected.style.display = 'none';
+      statusDisconnected.style.display = 'none';
+      statusOfficial.style.display = 'block';
+      statusError.style.display = 'none';
+      connectionMethods.style.display = 'none';
+
+      // Update message if provided
+      if (message) {
+        officialMessage.textContent = message;
+      }
+
+      stopPolling();
+    } else if (state === 'open') {
       // Connected
       statusConnected.style.display = 'block';
       statusDisconnected.style.display = 'none';
+      statusOfficial.style.display = 'none';
+      statusError.style.display = 'none';
       connectionMethods.style.display = 'none';
 
       phoneNumberEl.textContent = formatPhoneNumber(phoneNumber);
@@ -211,6 +229,8 @@
       // Disconnected or connecting
       statusConnected.style.display = 'none';
       statusDisconnected.style.display = 'block';
+      statusOfficial.style.display = 'none';
+      statusError.style.display = 'none';
       connectionMethods.style.display = 'block';
     }
   }
@@ -219,6 +239,7 @@
     statusLoading.style.display = 'block';
     statusConnected.style.display = 'none';
     statusDisconnected.style.display = 'none';
+    statusOfficial.style.display = 'none';
     statusError.style.display = 'none';
   }
 
@@ -227,6 +248,7 @@
     statusLoading.style.display = 'none';
     statusConnected.style.display = 'none';
     statusDisconnected.style.display = 'none';
+    statusOfficial.style.display = 'none';
     statusError.style.display = 'block';
     errorMessage.textContent = message;
   }
