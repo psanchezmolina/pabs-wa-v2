@@ -823,9 +823,9 @@ const description = await openaiAPI.analyzeImage(media.base64);
   - **Importante:** No marca contacto como "no-wa" si instancia está caída
   - `checkWhatsAppNumber()` retorna `true`/`false`/`null` (null = no se pudo verificar)
   - Cola se pierde al reiniciar servidor (volátil, no persistente)
-- **Timeout global de 15 segundos:**
-  - Todas las llamadas a APIs externas tienen timeout de 15s
-  - Si una API no responde en 15s → Error timeout
+- **Timeout de APIs externas:**
+  - Timeout global: 15 segundos para la mayoría de APIs (GHL, Evolution, OpenAI)
+  - **Flowise timeout: 2 minutos (120s)** - Permite tiempo para uso de herramientas por agentes
   - Previene bloqueos indefinidos, puede generar más notificaciones si APIs están lentas
 - **Validación whitelist de webhooks:**
   - Solo procesa webhooks de `location_id`/`instance_name` que existan en BD

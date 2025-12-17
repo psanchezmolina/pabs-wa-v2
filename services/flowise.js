@@ -37,7 +37,7 @@ async function callFlowiseAgent(agentConfig, question, overrideConfig) {
     const response = await withRetry(() =>
       axios.post(flowise_webhook_url, payload, {
         headers,
-        timeout: 15000  // 15 segundos
+        timeout: 120000  // 2 minutos - permitir tiempo para uso de herramientas
       })
     );
 
