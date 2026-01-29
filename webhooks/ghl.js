@@ -5,6 +5,7 @@ const { getClientByLocationId } = require('../services/supabase');
 const ghlAPI = require('../services/ghl');
 const evolutionAPI = require('../services/evolution');
 const messageCache = require('../services/messageCache');
+const { splitMessageWithLLM } = require('../services/messageSplitter');
 
 async function handleGHLWebhook(req, res) {
   // Log COMPLETO del webhook para debugging
@@ -42,8 +43,113 @@ async function handleGHLWebhook(req, res) {
       instanceName: client.instance_name,
       hasApiKey: !!client.instance_apikey,
       provider: client.whatsapp_provider,
-      fromCache: !!req.client
+      fromCache: !!req.client,
+      isBeta: client.is_beta
     });
+
+    // 🧪 BETA FEATURE: Dividir mensajes con LLM para mayor naturalidad
+    // Solo para clientes beta usando Evolution API
+    if (client.is_beta && client.whatsapp_provider === 'evolution') {
+      logger.info('🧪 Beta client - Using LLM message splitter', {
+        locationId,
+        messageLength: messageText.length,
+        instanceName: client.instance_name
+      });
+
+      try {
+        // Obtener teléfono del contacto
+        let contactPhone;
+
+        if (req.body.phone) {
+          contactPhone = req.body.phone;
+          logger.info('Phone from webhook', { contactPhone });
+        } else {
+          logger.info('Fetching contact from GHL', { contactId });
+          const contact = await ghlAPI.getContact(client, contactId);
+          contactPhone = contact.phone;
+          logger.info('Contact retrieved', { contactId, contactPhone });
+        }
+
+        // Formatear número WhatsApp
+        const waNumber = contactPhone.replace(/^\+/, '') + '@s.whatsapp.net';
+
+        // Dividir mensaje con LLM
+        const { parte1, parte2, parte3 } = await splitMessageWithLLM(messageText);
+
+        // Filtrar partes vacías
+        const parts = [parte1, parte2, parte3].filter(p => p && p.length > 0);
+
+        logger.info('✂️ Message split by LLM', {
+          totalParts: parts.length,
+          parte1Length: parte1.length,
+          parte2Length: parte2.length,
+          parte3Length: parte3.length
+        });
+
+        // Enviar cada parte secuencialmente
+        for (let i = 0; i < parts.length; i++) {
+          await evolutionAPI.sendText(
+            client.instance_name,
+            client.instance_apikey,
+            waNumber,
+            parts[i]
+          );
+
+          logger.info(`✅ Sent part ${i + 1}/${parts.length} via Evolution API`);
+
+          // Delay entre mensajes para simular escritura humana
+          // - Parte 1 → Parte 2: 2 segundos
+          // - Parte 2 → Parte 3: 1.5 segundos
+          if (i < parts.length - 1) {
+            const delay = i === 0 ? 2000 : 1500;
+            await new Promise(resolve => setTimeout(resolve, delay));
+          }
+        }
+
+        logger.info('✅ Beta flow completed - All parts sent', {
+          locationId,
+          totalParts: parts.length,
+          waNumber
+        });
+
+        // Intentar marcar como entregado en GHL (no crítico si falla)
+        try {
+          await ghlAPI.updateMessageStatus(client, messageId, 'delivered');
+          logger.debug('✅ Message marked as delivered in GHL', { messageId });
+        } catch (statusError) {
+          logger.debug('Could not update message status', {
+            messageId,
+            error: statusError.message
+          });
+        }
+
+        return res.status(200).json({
+          success: true,
+          beta: true,
+          parts: parts.length
+        });
+
+      } catch (betaError) {
+        logger.error('❌ Beta flow failed - Falling back to normal flow', {
+          locationId,
+          error: betaError.message,
+          stack: betaError.stack
+        });
+
+        await notifyAdmin('Beta message splitter failed', {
+          location_id: locationId,
+          error: betaError.message,
+          stack: betaError.stack,
+          endpoint: '/webhook/ghl',
+          contactId,
+          messageId,
+          note: 'Falling back to normal flow'
+        });
+
+        // Continuar con flujo normal (no hacer return, dejar que caiga al código siguiente)
+        logger.info('⚠️ Continuing with normal flow after beta failure');
+      }
+    }
 
     // ✅ Si usa API oficial, GHL maneja el envío directamente
     if (client.whatsapp_provider === 'official') {

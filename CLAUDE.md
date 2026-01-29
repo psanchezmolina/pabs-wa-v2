@@ -55,7 +55,8 @@
 │   ├── langfuse.js       # Langfuse API client
 │   ├── flowise.js        # Flowise API client
 │   ├── agentBuffer.js    # Message buffering + debouncing
-│   └── mediaProcessor.js # Attachment processing
+│   ├── mediaProcessor.js # Attachment processing
+│   └── messageSplitter.js # LLM message splitter (beta - divide mensajes en 1-3 partes)
 ├── utils/
 │   ├── retry.js          # axios-retry config + timeout global
 │   ├── logger.js         # Winston logger
@@ -336,7 +337,136 @@ El sistema soporta **dos tipos de providers** para WhatsApp:
 
 Sistema de feature flags simple para testear nuevas funcionalidades con clientes específicos.
 
-### Configuración
+**Nota:** El Agent System (Flowise + Langfuse) ya NO es beta y está disponible para todos los clientes.
+
+### LLM Message Splitter (Beta - FASE 1)
+
+**Estado:** En testing con clientes beta
+**Objetivo:** Simplificar la experiencia de mensajería dividiendo respuestas largas en 2-3 mensajes más naturales
+
+#### ¿Qué hace?
+
+Intercepta mensajes outbound de GHL Conversation AI y los divide en hasta 3 partes coherentes usando GPT-4o-mini antes de enviarlos a WhatsApp. Esto hace que las conversaciones parezcan más humanas y naturales.
+
+#### Flujo completo:
+
+```
+WhatsApp (usuario)
+    ↓
+Evolution API
+    ↓
+/webhook/whatsapp (tu servidor)
+    ↓
+GHL API (mensaje inbound)
+    ↓
+GHL Conversation AI (genera respuesta completa)
+    ↓
+GHL registra mensaje outbound (texto completo)
+    ↓
+/webhook/ghl (tu servidor) ← INTERCEPTA AQUÍ
+    ↓
+[NUEVO: LLM Message Splitter]
+├─ Divide mensaje con GPT-4o-mini
+├─ Resultado: {parte1, parte2, parte3}
+└─ Envía cada parte a Evolution API con delays (2s, 1.5s)
+    ↓
+Evolution API
+    ↓
+WhatsApp (usuario recibe 2-3 mensajes naturales)
+```
+
+#### Diferencias con Agent System (Flowise):
+
+| Aspecto | Agent System (Producción) | LLM Message Splitter (Beta) |
+|---------|---------------------------|------------------------------|
+| **IA** | Flowise + Langfuse | GHL Conversation AI |
+| **Dónde se procesa** | Tu servidor | GHL Cloud |
+| **División de mensajes** | En Flowise (nodo LLM) | En tu servidor (post-procesamiento) |
+| **Buffering** | Sí (7s debouncing) | No (GHL maneja) |
+| **Complejidad** | Alta (agentes, herramientas, memoria) | Baja (solo división) |
+| **Historial GHL** | Sincronizado (multiparte) | Inconsistente (1 largo vs 2-3 cortos) |
+
+#### Activación (FASE 1):
+
+**Condiciones:**
+- Cliente tiene `is_beta = true` en BD
+- Cliente usa `whatsapp_provider = 'evolution'`
+- Mensaje es tipo `outbound` (saliente de GHL)
+
+**SQL:**
+```sql
+-- Activar cliente para beta (LLM Message Splitter)
+UPDATE clients_details
+SET is_beta = true
+WHERE location_id = 'XXX' AND whatsapp_provider = 'evolution';
+
+-- Ver clientes beta activos
+SELECT location_id, instance_name, is_beta, whatsapp_provider
+FROM clients_details
+WHERE is_beta = true;
+```
+
+#### Lógica de división (servicios/messageSplitter.js):
+
+El LLM sigue estas reglas estrictas:
+- Máximo 3 fragmentos
+- Respeta saltos de párrafo existentes (\n\n)
+- Cada fragmento termina en puntuación final (. ? !)
+- **CRÍTICO:** Listas NUNCA se dividen (van completas en una parte)
+- Elimina símbolos de lista (-, *, números), deja solo saltos de línea
+- Retorna JSON: `{parte1: string, parte2: string, parte3: string}`
+- Partes vacías son `""` (nunca `null`)
+
+**Ejemplo:**
+```
+Entrada: "¡Genial! Estos son los requisitos:\n\n- Requisito 1\n- Requisito 2\n\n¿Te parece bien?"
+
+Salida:
+{
+  "parte1": "¡Genial! Estos son los requisitos:",
+  "parte2": "Requisito 1\nRequisito 2",
+  "parte3": "¿Te parece bien?"
+}
+```
+
+#### Manejo de errores:
+
+- Si el LLM falla → Fallback: envía mensaje completo sin dividir
+- Si Evolution API falla → Notifica admin y cae al flujo normal
+- Logs detallados en cada paso para debugging
+
+#### Delays entre mensajes:
+
+- Parte 1 → Parte 2: **2 segundos** (simula escritura humana)
+- Parte 2 → Parte 3: **1.5 segundos**
+
+#### Plan de migración a FASE 2 (Producción):
+
+Una vez validado con clientes beta, se creará un campo dedicado:
+
+```sql
+-- FASE 2: Crear campo split_messages
+ALTER TABLE clients_details
+ADD COLUMN split_messages BOOLEAN DEFAULT false;
+
+-- Migrar clientes beta
+UPDATE clients_details
+SET split_messages = true
+WHERE is_beta = true AND whatsapp_provider = 'evolution';
+
+-- Código cambiaría de:
+-- const shouldSplit = client.is_beta && client.whatsapp_provider === 'evolution';
+-- A:
+-- const shouldSplit = client.split_messages;
+```
+
+**Beneficios de split_messages:**
+- Escalable: funciona con Evolution API y API Oficial
+- Independiente de `is_beta` (para otras features)
+- Clientes pueden activar/desactivar sin ser beta
+- Más semántico y claro
+
+### Configuración General Beta
 
 **Base de datos:**
 ```sql
