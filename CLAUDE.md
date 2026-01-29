@@ -202,134 +202,48 @@ CREATE TABLE clients_details (
 
 ### Table: `agent_configs`
 
-**Estructura completa:**
-
 ```sql
 CREATE TABLE agent_configs (
     id SERIAL PRIMARY KEY,
     location_id VARCHAR NOT NULL,
     agent_name VARCHAR NOT NULL,
     flowise_webhook_url TEXT NOT NULL,
+    flowise_api_key TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
-    flowise_api_key TEXT,
-    CONSTRAINT agent_configs_location_id_agent_name_key UNIQUE (location_id, agent_name),
-    CONSTRAINT fk_agent_configs_location FOREIGN KEY (location_id)
-        REFERENCES clients_details(location_id) ON DELETE CASCADE
+    UNIQUE(location_id, agent_name),
+    FOREIGN KEY (location_id) REFERENCES clients_details(location_id) ON DELETE CASCADE
 );
 ```
 
-**Columnas:**
-
-- `id` (SERIAL PRIMARY KEY) - Identificador único auto-incremental
-- `location_id` (VARCHAR NOT NULL) - Identificador de ubicación GHL
-- `agent_name` (VARCHAR NOT NULL) - Nombre del agente (ej: "agente-roi")
-- `flowise_webhook_url` (TEXT NOT NULL) - URL completa del webhook de Flowise
-- `created_at` (TIMESTAMPTZ NULL) - Timestamp de creación (default: NOW())
-- `updated_at` (TIMESTAMPTZ NULL) - Timestamp de última actualización (default: NOW())
-- `flowise_api_key` (TEXT NULL) - API key de Flowise (opcional, ej: "Bearer xxx")
-
-**Constraints:**
-- `agent_configs_location_id_agent_name_key` - UNIQUE(location_id, agent_name)
-- `fk_agent_configs_location` - FOREIGN KEY (location_id) REFERENCES clients_details(location_id) ON DELETE CASCADE
-
-**Índices:**
-- `agent_configs_pkey` - PRIMARY KEY on `id`
-- `agent_configs_location_id_agent_name_key` - UNIQUE INDEX on `(location_id, agent_name)`
-- `idx_agent_configs_location_id` - INDEX on `location_id`
-- `idx_agent_configs_lookup` - INDEX on `(location_id, agent_name)`
-
-**Seguridad:**
-- RLS (Row Level Security) activado
-- Política: "Allow authenticated access" - Solo roles `authenticated` y `anon`
-- Funciona con anon key, no requiere service_role key
-
-**Propósito:** Configuración de agentes conversacionales con IA para el sistema de agentes.
+**Propósito:** Configuración de agentes conversacionales (Flowise) por cliente.
 
 ---
 
 ## WhatsApp Providers: Evolution API vs API Oficial
 
-El sistema soporta **dos tipos de providers** para WhatsApp:
-
 ### **1. Evolution API (Default)**
-- **Uso:** Mayoría de clientes actuales
-- **Cómo funciona:** GHL envía webhooks a tu servidor → Servidor envía vía Evolution API
-- **Configuración BD:**
-  ```sql
-  INSERT INTO clients_details (
-    location_id,
-    whatsapp_provider,
-    instance_name,
-    instance_apikey,
-    ghl_access_token,
-    ghl_refresh_token,
-    ghl_token_expiry
-  ) VALUES (
-    'xxx',
-    'evolution',  -- Tipo de provider
-    'nombre-instancia',
-    'api-key-xxx',
-    'token...',
-    'refresh...',
-    '2025-...'
-  );
-  ```
-- **Flujo mensajería:**
-  - **GHL → WhatsApp**: GHL webhook → `/webhook/ghl` → Evolution API → WhatsApp
-  - **WhatsApp → GHL**: WhatsApp → Evolution API → `/webhook/whatsapp` → GHL API
-- **Monitoreo:** ✅ Instance monitor verifica estado cada 2h, auto-restart si se desconecta
-- **Panel conexión:** ✅ Acceso a `/panel/` para escanear QR/Pairing code
+- **Flujo:** GHL → `/webhook/ghl` → Evolution API → WhatsApp
+- **Setup BD:** `whatsapp_provider='evolution'`, requiere `instance_name/apikey`
+- **Monitoreo:** ✅ Auto-restart cada 2h
+- **Panel:** ✅ `/panel/` (QR/Pairing)
 
-### **2. WhatsApp API Oficial (Nuevo)**
-- **Uso:** Clientes que prefieren API oficial de Meta/Facebook vía GHL
-- **Cómo funciona:** GHL se conecta directamente con WhatsApp API Oficial (sin pasar por tu servidor para mensajería)
-- **Configuración BD:**
-  ```sql
-  INSERT INTO clients_details (
-    location_id,
-    whatsapp_provider,
-    instance_name,
-    instance_apikey,
-    instance_sender,
-    ghl_access_token,
-    ghl_refresh_token,
-    ghl_token_expiry
-  ) VALUES (
-    'xxx',
-    'official',  -- Tipo de provider
-    NULL,        -- No usa Evolution
-    NULL,        -- No usa Evolution
-    NULL,        -- No usa Evolution
-    'token...',
-    'refresh...',
-    '2025-...'
-  );
-  ```
-- **Flujo mensajería:**
-  - **GHL → WhatsApp**: GHL → WhatsApp API Oficial (directo, no pasa por tu servidor)
-  - **WhatsApp → GHL**: WhatsApp API Oficial → GHL (directo, no pasa por tu servidor)
-  - **Agent System**: GHL → `/webhook/agent` → Tu servidor → Flowise → Respuesta registrada en GHL ✅
-- **Monitoreo:** ❌ No monitoreable (GHL maneja conexión)
-- **Panel conexión:** ❌ Muestra mensaje: "Esta cuenta usa la API Oficial. Para gestionar la conexión, debe ir a Configuración → WhatsApp"
+### **2. WhatsApp API Oficial**
+- **Flujo:** GHL ↔ WhatsApp API Oficial (directo, sin pasar por servidor)
+- **Setup BD:** `whatsapp_provider='official'`, `instance_name/apikey/sender=NULL`
+- **Monitoreo:** ❌ GHL maneja
+- **Panel:** ❌ Gestión en GHL UI
 
-### **¿Cuándo usar cada uno?**
+| Característica | Evolution | Oficial |
+|----------------|-----------|---------|
+| Coste | Gratis | Pago/mensaje |
+| Monitoreo | ✅ Auto-restart | ❌ |
+| Setup | Panel QR | GHL UI |
 
-| Característica | Evolution API | API Oficial |
-|----------------|---------------|-------------|
-| **Coste** | Gratis (self-hosted) | Pago por mensaje (Meta) |
-| **Límites** | Sin límites oficiales | Límites de Meta |
-| **Estabilidad** | Depende de Evolution | Más estable (oficial) |
-| **Verificación** | Sin verificación | Puede verificar número |
-| **Agent System** | ✅ Soportado | ✅ Soportado |
-| **Monitoreo** | ✅ Auto-restart | ❌ GHL maneja |
-| **Setup** | Panel QR/Pairing | GHL UI |
-
-### **Importante:**
-
-- **Agent System funciona con AMBOS providers** - El webhook `/webhook/agent` recibe mensajes de GHL y funciona igual independientemente del provider
-- **No mezclar providers** - Cada cliente usa UN solo provider (evolution o official)
-- **Webhooks GHL outbound** - Solo configurar para clientes Evolution (los clientes Official no lo necesitan)
+**Importante:**
+- Agent System funciona con AMBOS providers
+- Cada cliente usa UN solo provider
+- Webhooks GHL outbound solo para Evolution
 
 ---
 
@@ -341,183 +255,29 @@ Sistema de feature flags simple para testear nuevas funcionalidades con clientes
 
 ### LLM Message Splitter (Beta - FASE 1)
 
-**Estado:** En testing con clientes beta
-**Objetivo:** Simplificar la experiencia de mensajería dividiendo respuestas largas en 2-3 mensajes más naturales
+**Objetivo:** Divide respuestas largas de GHL Conversation AI en 2-3 mensajes usando GPT-4o-mini
 
-#### ¿Qué hace?
+**Activación:**
+- `is_beta = true` + `whatsapp_provider = 'evolution'`
+- **IMPORTANTE:** Desactiva Agent System automáticamente (no configurar `/webhook/agent`)
 
-Intercepta mensajes outbound de GHL Conversation AI y los divide en hasta 3 partes coherentes usando GPT-4o-mini antes de enviarlos a WhatsApp. Esto hace que las conversaciones parezcan más humanas y naturales.
-
-#### Flujo completo:
-
-```
-WhatsApp (usuario)
-    ↓
-Evolution API
-    ↓
-/webhook/whatsapp (tu servidor)
-    ↓
-GHL API (mensaje inbound)
-    ↓
-GHL Conversation AI (genera respuesta completa)
-    ↓
-GHL registra mensaje outbound (texto completo)
-    ↓
-/webhook/ghl (tu servidor) ← INTERCEPTA AQUÍ
-    ↓
-[NUEVO: LLM Message Splitter]
-├─ Divide mensaje con GPT-4o-mini
-├─ Resultado: {parte1, parte2, parte3}
-└─ Envía cada parte a Evolution API con delays (2s, 1.5s)
-    ↓
-Evolution API
-    ↓
-WhatsApp (usuario recibe 2-3 mensajes naturales)
-```
-
-#### Diferencias con Agent System (Flowise):
-
-| Aspecto | Agent System (Producción) | LLM Message Splitter (Beta) |
-|---------|---------------------------|------------------------------|
-| **IA** | Flowise + Langfuse | GHL Conversation AI |
-| **Dónde se procesa** | Tu servidor | GHL Cloud |
-| **División de mensajes** | En Flowise (nodo LLM) | En tu servidor (post-procesamiento) |
-| **Buffering** | Sí (7s debouncing) | No (GHL maneja) |
-| **Complejidad** | Alta (agentes, herramientas, memoria) | Baja (solo división) |
-| **Historial GHL** | Sincronizado (multiparte) | Inconsistente (1 largo vs 2-3 cortos) |
-
-#### Activación (FASE 1):
-
-**Condiciones:**
-- Cliente tiene `is_beta = true` en BD
-- Cliente usa `whatsapp_provider = 'evolution'`
-- Mensaje es tipo `outbound` (saliente de GHL)
-
-**IMPORTANTE:** Cuando `is_beta = true`, el Agent System (Flowise) se **desactiva automáticamente**:
-- El webhook `/webhook/agent` rechaza mensajes de clientes beta (retorna 200 con error)
-- Los clientes beta deben usar **GHL Conversation AI** en lugar de Flowise
-- Las respuestas se procesan vía `/webhook/ghl` con el LLM message splitter
-- **NO configurar** webhooks a `/webhook/agent` para clientes beta
-
-**SQL:**
-```sql
--- Activar cliente para beta (LLM Message Splitter)
-UPDATE clients_details
-SET is_beta = true
-WHERE location_id = 'XXX' AND whatsapp_provider = 'evolution';
-
--- Ver clientes beta activos
-SELECT location_id, instance_name, is_beta, whatsapp_provider
-FROM clients_details
-WHERE is_beta = true;
-```
-
-#### Lógica de división (servicios/messageSplitter.js):
-
-El LLM sigue estas reglas estrictas:
-- Máximo 3 fragmentos
-- Respeta saltos de párrafo existentes (\n\n)
-- Cada fragmento termina en puntuación final (. ? !)
-- **CRÍTICO:** Listas NUNCA se dividen (van completas en una parte)
-- Elimina símbolos de lista (-, *, números), deja solo saltos de línea
-- Retorna JSON: `{parte1: string, parte2: string, parte3: string}`
-- Partes vacías son `""` (nunca `null`)
-
-**Ejemplo:**
-```
-Entrada: "¡Genial! Estos son los requisitos:\n\n- Requisito 1\n- Requisito 2\n\n¿Te parece bien?"
-
-Salida:
-{
-  "parte1": "¡Genial! Estos son los requisitos:",
-  "parte2": "Requisito 1\nRequisito 2",
-  "parte3": "¿Te parece bien?"
-}
-```
-
-#### Manejo de errores:
-
-- Si el LLM falla → Fallback: envía mensaje completo sin dividir
-- Si Evolution API falla → Notifica admin y cae al flujo normal
-- Logs detallados en cada paso para debugging
-
-#### Delays entre mensajes:
-
-- Parte 1 → Parte 2: **2 segundos** (simula escritura humana)
-- Parte 2 → Parte 3: **1.5 segundos**
-
-#### Plan de migración a FASE 2 (Producción):
-
-Una vez validado con clientes beta, se creará un campo dedicado:
+**Lógica (servicios/messageSplitter.js):**
+- Máximo 3 fragmentos con puntuación final
+- Respeta párrafos (\n\n)
+- Listas NUNCA se dividen
+- Delays: 2s entre parte 1-2, 1.5s entre parte 2-3
+- Fallback: mensaje completo si falla
 
 ```sql
--- FASE 2: Crear campo split_messages
-ALTER TABLE clients_details
-ADD COLUMN split_messages BOOLEAN DEFAULT false;
-
--- Migrar clientes beta
-UPDATE clients_details
-SET split_messages = true
-WHERE is_beta = true AND whatsapp_provider = 'evolution';
-
--- Código cambiaría de:
--- const shouldSplit = client.is_beta && client.whatsapp_provider === 'evolution';
--- A:
--- const shouldSplit = client.split_messages;
-```
-
-**Beneficios de split_messages:**
-- Escalable: funciona con Evolution API y API Oficial
-- Independiente de `is_beta` (para otras features)
-- Clientes pueden activar/desactivar sin ser beta
-- Más semántico y claro
-
-### Configuración General Beta
-
-**Base de datos:**
-```sql
--- Activar cliente para beta
+-- Activar/desactivar
 UPDATE clients_details SET is_beta = true WHERE location_id = 'XXX';
-
--- Desactivar
-UPDATE clients_details SET is_beta = false WHERE location_id = 'XXX';
-
--- Ver clientes beta
-SELECT location_id, instance_name, is_beta FROM clients_details WHERE is_beta = true;
 ```
 
 ### Uso en Código
 
-**Helpers disponibles en `utils/betaFeatures.js`:**
+Ver `utils/betaFeatures.js`: `isBetaClient()`, `executeBetaAware()`, `logBetaUsage()`
 
-```javascript
-const { isBetaClient, executeBetaAware, logBetaUsage } = require('../utils/betaFeatures');
-
-// 1. Chequeo simple
-if (isBetaClient(client)) {
-  // Ejecutar lógica beta
-}
-
-// 2. Ejecución condicional
-const result = await executeBetaAware(
-  client,
-  async () => {/* lógica beta */},
-  async () => {/* lógica producción */}
-);
-
-// 3. Logging de uso beta
-logBetaUsage(client, 'feature-name', { metadata: 'value' });
-```
-
-### Workflow
-
-1. **Desarrollo:** Implementar feature con chequeo `isBetaClient()`
-2. **Testing:** Activar `is_beta=true` para 1-2 clientes de prueba
-3. **Validación:** Monitorear logs y notificaciones durante varios días
-4. **Rollout:** Si es exitoso, remover chequeo beta y desplegar para todos
-5. **Cleanup:** Actualizar CLAUDE.md si es necesario
-
-**Importante:** Beta flags son para features **completas y funcionales**, no para código experimental o roto.
+**Workflow:** Desarrollo → Testing (1-2 clientes) → Validación → Rollout → Cleanup docs
 
 ---
 
@@ -561,35 +321,17 @@ logBetaUsage(client, 'feature-name', { metadata: 'value' });
 
 ### Panel de Conexión WhatsApp v2
 
-Panel moderno para conectar instancias de WhatsApp mediante QR Code o Pairing Code.
-
 **Endpoints:**
-- `GET /panel/config` - Configuración de branding (retorna `{brandName}`)
-- `GET /panel/status/:locationId` - Estado de instancia (open/connecting/close)
-- `POST /panel/qr/:locationId` - Generar QR Code (retorna base64 o mensaje "ya conectado")
-- `POST /panel/pairing/:locationId` - Generar Pairing Code (body: `{phoneNumber}` sin +)
+- `GET /panel/config` - Branding config
+- `GET /panel/status/:locationId` - Estado instancia
+- `POST /panel/qr/:locationId` - QR Code (base64)
+- `POST /panel/pairing/:locationId` - Pairing Code (body: `{phoneNumber}`)
 
-**Métodos de conexión:**
-1. **QR Code** (principal): Retorna base64 de imagen lista para `<img src="">`
-2. **Pairing Code** (experimental): Genera código de 8 dígitos, fallback automático a QR si falla
+**URL GHL Custom Menu Link:** `https://tu-dominio.com/panel/?location_id={{location.id}}`
 
-**URL para GHL Custom Menu Link:**
-```
-https://tu-dominio.com/panel/?location_id={{location.id}}
-```
+**Características:** Auto-detección location_id, white-label (`BRAND_NAME`), fecha conexión relativa, formato E.164
 
-**Características:**
-- **Auto-detección:** Obtiene `location_id` desde URL (GHL Custom Menu Link)
-- **Auto-actualización:** Si conexión exitosa pero sin número en BD, lo obtiene de Evolution API automáticamente
-- **Fecha de conexión:** Muestra "Hace Xh" o "Hace X días" en tiempo relativo
-- **White-label:** Configurar `BRAND_NAME` en .env para personalizar marca mostrada
-- **Formato E.164:** Números mostrados como +34 660 722 687
-
-**Notas técnicas:**
-- Pairing code puede fallar si instancia fue creada hace tiempo → Fallback automático a QR
-- Panel funciona embebido en iframe (CSP configurado para GHL domains)
-- No usa localStorage/cookies (third-party context)
-- Endpoint `/panel/status` actualiza `instance_sender` y `last_connected_at` cuando detecta conexión
+**Nota:** Pairing code puede fallar en instancias antiguas (fallback a QR automático)
 
 ### Legacy (QR Panel) - DEPRECATED
 
@@ -602,241 +344,88 @@ https://tu-dominio.com/panel/?location_id={{location.id}}
 ## Core Workflows
 
 ### 1. GHL → WhatsApp
-
-**Trigger:** GHL envía webhook en mensaje saliente
-
-**Proceso:**
-
-1. Validar payload (solo procesar si `direction === "outbound"`, usar campo `body` para el texto)
-2. Obtener cliente por `location_id` de Supabase
-3. Obtener teléfono de contacto desde GHL API
+1. Validar payload (`direction === "outbound"`, campo `body`)
+2. Obtener cliente por `location_id`
+3. Obtener teléfono contacto (GHL API)
 4. Enviar a Evolution API
-5. Marcar como entregado en GHL (o manejar fallo)
+5. Marcar entregado en GHL
 
-**Manejo de errores:** 4 reintentos, notificar al admin en caso de fallo, verificar si el contacto tiene WhatsApp
+**Error handling:** 4 reintentos, notificar admin, verificar WhatsApp
 
 ### 2. WhatsApp → GHL
+1. Validar payload, obtener cliente por `instance_name`
+2. Detectar tipo mensaje + procesar media (Whisper/Vision)
+3. Buscar/crear contacto + conversación GHL
+4. Subir mensaje a GHL
 
-**Trigger:** Webhook de Evolution API al recibir mensaje
-
-**Proceso:**
-
-1. Validar payload (procesa todos los mensajes, incluyendo propios)
-2. Obtener cliente por `instance_name` de Supabase
-3. Detectar tipo de mensaje: texto/audio/imagen
-4. Procesar multimedia si es necesario (Whisper/Vision)
-5. Buscar o crear contacto GHL
-6. Buscar o crear conversación GHL
-7. Subir mensaje a GHL
-
-**Procesamiento de mensajes:**
-
-- **Texto:** Usar directamente
-- **Audio:** Transcribir con Whisper → `"audio: {text}"` (fallback: `"🎤 [audio no procesado]"`)
-- **Imagen:** Analizar con Vision → `"descripcion imagen: {text}"` (fallback: `"🖼️ [imagen no procesada]"`)
-- **MP4:** Intenta Whisper (IG/FB audios) → Si falla, placeholder video
-- **Video:** Formato básico → `"🎥 [video] - caption"`
-- **Document:** Formato básico → `"📎 [filename] - caption"`
-- **Location:** Formato básico → `"📍 [ubicación]: nombre (lat, lng)"`
-- **Contact:** Formato básico → `"👤 [contacto: nombre]"`
-- **Sticker:** Formato básico → `"😊 [sticker]"`
-
-**Límites:** Mensajes >4096 chars se truncan automáticamente
+**Formatos media:** Texto (directo), Audio (`"audio: {text}"`), Imagen (`"descripcion imagen: {text}"`), MP4 (Whisper si posible), Video/Document/Location/Contact/Sticker (placeholders)
 
 ### 3. OAuth Flow
-
-1. **Inicio:** `/oauth/ghl/connect?location_id=XXX` redirige a GHL
-2. **Callback:** Intercambiar código por tokens, guardar en Supabase
-3. **Auto-refresco:** Ocurre automáticamente en `ghl.js` cuando el token expira en < 5 min
+`/oauth/ghl/connect` → Intercambiar código → Guardar tokens Supabase → Auto-refresh en `ghl.js` (<5min expiry)
 
 ### 4. Sistema de Notificaciones
-
-**Agregación inteligente (5 min window):**
-- Primer error → Notificación inmediata
-- Errores repetidos → Agrupados automáticamente
-- Envío resumen después de 5 min o al reconectar
-
-**Formato mejorado incluye:**
-- 📁 Archivo:línea del error (extraído del stack trace)
-- 🌐 API Response completa (status + mensaje + payload)
-- 📤 Payload enviado a la API (sanitizado, hasta 400 chars)
-- 💡 Quick Fix Suggestions contextuales según tipo de error
-- Stack trace completo
-
-**Sistema de fallback (Email):**
-- Notificaciones primarias vía WhatsApp (`ADMIN_INSTANCE`)
-- Si WhatsApp falla → Email automático vía Resend
-- Si ambos fallan → Log crítico en Winston
-- Email usa formato HTML con toda la información del error
-- Configuración opcional: requiere `RESEND_API_KEY` y `ADMIN_EMAIL`
-
-**Triggers:** Token refresh failed, webhook errors, OpenAI failures, instancias desconectadas
+- Agregación 5min (primer error inmediato, siguientes agrupados)
+- Formato: archivo:línea, API response, payload, quick fix suggestions, stack trace
+- Fallback: WhatsApp → Email (Resend) → Winston log
+- Triggers: token refresh, webhooks, OpenAI, instancias desconectadas
 
 ### 5. Monitor de Instancias + Auto-Restart
-
-**Detección Híbrida:**
-- **Primario:** Webhook `CONNECTION_UPDATE` (tiempo real, 0 requests)
-- **Backup:** Polling cada 2 horas (`/instance/connectionState`)
-
-**Auto-Restart Automático:**
-- Al detectar desconexión → Intenta `/instance/restart` (usa sesión existente)
-- Si éxito → Notifica "Reconectada Automáticamente ✅" + procesa cola mensajes
-- Si falla → Notifica "Requiere QR ⚠️" con instrucciones
-
-**Funcionalidad:**
-- Detecta cambios de estado en tiempo real vía webhooks
-- Auto-reconexión sin intervención manual (si sesión válida)
-- Procesa cola de mensajes pendientes al reconectar
-- Notifica solo en cambios (no spam)
-- Carga mínima: ~1,800 requests/día con 150 instancias (polling cada 2h)
+- Detección: Webhook `CONNECTION_UPDATE` (primario) + Polling 2h (backup)
+- Auto-restart: `/instance/restart` → Si éxito: procesa cola mensajes, Si falla: notifica "Requiere QR"
+- Carga: ~1,800 requests/día (150 instancias)
 
 ### 6. Agent System
 
-**Overview:**
-Sistema de agentes conversacionales con IA que procesa mensajes de GHL (SMS, IG, FB), los agrupa con debouncing (7s), los envía a Flowise para procesamiento AI, y retorna respuestas multiparte a través de GHL.
+Sistema de agentes conversacionales IA: procesa mensajes GHL (SMS/IG/FB) → Buffer 7s → Flowise + Langfuse → Respuesta multiparte a GHL
 
 **Arquitectura:**
-- **Webhook:** `POST /webhook/agent` (validación whitelist)
-- **Buffer:** Mensajes se acumulan en RAM (NodeCache, 10min TTL)
-- **Debouncing:** 7 segundos (auto-reset en nuevo mensaje)
-- **AI Processing:** Flowise + Langfuse (prompt management)
-- **Response:** Hasta 3 partes registradas en GHL como outbound
+- Webhook: `/webhook/agent` (whitelist)
+- Buffer: RAM (NodeCache, 10min TTL, límite 7 mensajes)
+- Debouncing: 7s (auto-reset)
+- AI: Flowise + Langfuse (prompts cacheados 1h)
 
-**Database Schema:**
+**Servicios:** `langfuse.js`, `flowise.js`, `agentBuffer.js`, `mediaProcessor.js`, `mediaHelper.js` (DRY compartido con whatsapp.js)
 
-```sql
--- Tabla de configuración de agentes
-CREATE TABLE agent_configs (
-  id SERIAL PRIMARY KEY,
-  location_id VARCHAR NOT NULL,
-  agent_name VARCHAR NOT NULL,
-  flowise_webhook_url TEXT NOT NULL,  -- URL completa del webhook de Flowise
-  flowise_api_key TEXT,                -- API key de Flowise (opcional, ej: "Bearer xxx")
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(location_id, agent_name),
-  FOREIGN KEY (location_id) REFERENCES clients_details(location_id) ON DELETE CASCADE
-);
-```
+**Workflow:**
+1. Recepción + validación webhook
+2. Procesar attachments (OpenAI)
+3. Buffering con debounce 7s
+4. AI Processing: Langfuse (prompts) + Flowise (chatflow)
+5. Registrar respuesta en GHL (hasta 3 partes)
 
-**Servicios:**
-- `services/langfuse.js` - Obtener prompts (caché 1h)
-- `services/flowise.js` - Llamar chatflow + parser 3 niveles
-- `services/agentBuffer.js` - Gestión de buffers con debouncing (límite 7 mensajes)
-- `services/mediaProcessor.js` - Procesar attachments (audio/imagen)
-- `utils/mediaHelper.js` - **DRY helpers** compartidos con whatsapp.js
-
-**Protecciones implementadas:**
-- Límite de 7 mensajes por buffer (previene abuse)
-- Error handling completo en setupDebounce
-- Notificación admin cuando se alcanza límite
-- Buffer auto-limpia (TTL 10 min)
-
-**Workflow completo:**
-
-1. **Recepción:** GHL envía webhook con mensaje (SMS/IG/FB)
-2. **Validación:** Middleware verifica que `location_id` exista en BD
-3. **Procesamiento:** Attachments procesados con OpenAI (compartido con whatsapp.js)
-4. **Buffering:** Mensaje añadido al buffer del contacto+canal
-5. **Debounce:** Timer de 7s configurado (auto-reset si llega nuevo mensaje)
-6. **AI Processing (al expirar debounce):**
-   - Verificar buffer no cambió (v1: comparar cantidad mensajes)
-   - Obtener prompt de Langfuse (cacheado 1h)
-   - Buscar/crear conversación en GHL
-   - Llamar Flowise con mensajes buffereados + startState
-   - Parsear respuesta JSON (3 niveles fallback)
-7. **Respuesta:** Registrar partes en GHL con dirección `outbound`
-8. **Cleanup:** Limpiar buffer
-
-**Payload esperado (GHL):**
-
+**Payload GHL:**
 ```json
 {
-  "contact_id": "xxxxx",
-  "location_id": "xxxxx",
-  "customData": {
-    "message_body": "texto del mensaje",
-    "agente": "agente-roi"
-  },
-  "message": {
-    "type": "SMS",  // o "IG", "FB" - OPCIONAL (ver nota abajo)
-    "attachments": ["url1", "url2"]
-  }
+  "contact_id": "xxx",
+  "location_id": "xxx",
+  "customData": {"message_body": "texto", "agente": "nombre-agente"},
+  "message": {"type": "SMS", "attachments": ["url"]}  // type opcional, default SMS
 }
 ```
 
-**Nota sobre `message.type`:**
-- `message.type` es **opcional** - útil para webhooks de inicio de conversación desde workflows
-- Si `message.type` **existe**: usa el valor (puede ser string o número)
-- Si `message.type` **NO existe**: canal por defecto = **SMS**
-- Webhooks de trigger manual (inicio conversación) típicamente no incluyen `message.type`
+**Mapeo canales:** 20=SMS, 19=WhatsApp, 18=IG, 11=FB, 29=Live_Chat
 
-**Mapeo de tipos de mensaje (GHL):**
-| Tipo | Canal | Descripción |
-|------|-------|-------------|
-| 20 | SMS | Mensajes de texto |
-| 19 | WhatsApp | API oficial de WhatsApp |
-| 18 | IG | Instagram Direct |
-| 11 | FB | Facebook Messenger |
-| 29 | Live_Chat | Chat widget del sitio web |
-
-**Nota:** Los valores mapeados coinciden con los tipos válidos del GHL API (`/conversations/messages`): SMS, Email, WhatsApp, IG, FB, Custom, Live_Chat, InternalComment.
-
-Si se recibe un tipo desconocido, se mapea como "Unknown" y se loguea un warning
-
-**Flowise payload completo:**
-
+**Flowise payload:**
 ```json
 {
-  "question": "mensaje del usuario",
+  "question": "mensaje",
   "overrideConfig": {
-    "sessionId": "conversation_id_de_ghl",
-    "startState": [
-      { "key": "contact_id", "value": "xxxxx" },
-      { "key": "conversation_id", "value": "xxxxx" },
-      { "key": "location_id", "value": "xxxxx" },
-      { "key": "canal", "value": "SMS" },
-      { "key": "tags", "value": "activar-ia, cliente-premium" },
-      { "key": "prompt", "value": "texto del prompt desde Langfuse" }
-    ]
+    "sessionId": "conversationId_de_ghl",  // Mantiene memoria
+    "startState": [{"key": "contact_id", "value": "xxx"}, ...]
   }
 }
 ```
 
-**Importante:** `sessionId` se pasa dentro de `overrideConfig` (NO como parámetro separado) para mantener la memoria de la conversación en Flowise. Usa el `conversationId` de GHL como valor.
-
-**Environment Variables (opcionales):**
-
-```bash
-# Langfuse (prompt management - solo URL base)
-LANGFUSE_BASE_URL=https://pabs-langfuse-web.r4isqy.easypanel.host
-```
-
-**Configuración por cliente en BD:**
-
+**Configuración Langfuse:**
 ```sql
--- Cada cliente tiene sus propias Langfuse API keys (1 cliente = 1 proyecto Langfuse)
-UPDATE clients_details
-SET
-  langfuse_public_key = 'pk-lf-xxx',  -- Desde Langfuse UI → Project Settings → API Keys
-  langfuse_secret_key = 'sk-lf-xxx'   -- Desde Langfuse UI → Project Settings → API Keys
-WHERE location_id = 'jWmwy7nMqnsXQPdZdSW8';
+UPDATE clients_details SET langfuse_public_key='pk-lf-xxx', langfuse_secret_key='sk-lf-xxx' WHERE location_id='xxx';
 ```
 
-**Notas importantes:**
-- **1 cliente = 1 proyecto Langfuse** con sus propias API keys almacenadas en BD
-- `LANGFUSE_BASE_URL` es global (mismo servidor Langfuse self-hosted para todos)
-- `langfuse_public_key` y `langfuse_secret_key` son **por cliente** en `clients_details`
-- `services/langfuse.js` recibe keys como parámetros: `getPrompt(agentName, publicKey, secretKey)`
-- Caché usa clave combinada `publicKey:agentName` para evitar conflictos entre clientes
-- **sessionId en Flowise:** Se pasa dentro de `overrideConfig.sessionId` (usa `conversationId` de GHL) para mantener memoria de conversación
-- **message.type opcional:** Si no existe en payload, canal por defecto = SMS (útil para triggers manuales)
-- Media helpers en `utils/mediaHelper.js` son **DRY** - compartidos con whatsapp.js
-- Respuestas se registran en GHL (no se envían directamente via WhatsApp)
-- GHL maneja el envío al canal correcto (SMS, IG, FB, WhatsApp)
-- Buffer v1: simple comparación de cantidad de mensajes (puede mejorarse con hash)
-- Procesamiento asíncrono: webhook retorna 200 inmediatamente
-- Errores en debounce callback tienen manejo separado (no capturados por try/catch principal)
+**Notas:**
+- 1 cliente = 1 proyecto Langfuse (keys en BD)
+- `sessionId` en `overrideConfig` (usa conversationId de GHL)
+- Procesamiento asíncrono (webhook retorna 200 inmediatamente)
+- Media helpers DRY compartidos con whatsapp.js
 
 Ver `FLOWISE.md` para documentación técnica completa del sistema.
 
@@ -844,31 +433,11 @@ Ver `FLOWISE.md` para documentación técnica completa del sistema.
 
 ## Coding Conventions
 
-### Module System
-
-Usar **CommonJS** (`require`/`module.exports`), NO módulos ES
-
-### Error Handling
-
-- Siempre usar `try/catch` en los manejadores de rutas
-- Loguear errores con Winston: `logger.error('msg', { context })`
-- Notificar al admin en fallos críticos vía WhatsApp
-- Devolver códigos de estado HTTP adecuados
-
-### Retries
-
-Todas las llamadas a API externas usan 4 reintentos con 800ms de retraso (configurado en `utils/retry.js`)
-
-### Logging
-
-```javascript
-logger.info('Event name', { key1: 'value1', key2: 'value2' });
-logger.error('Error name', { error: err.message, stack: err.stack });
-```
-
-### Validation
-
-Validar siempre los payloads de los webhooks antes de procesar (`utils/validation.js`)
+- **Module System:** CommonJS (`require`/`module.exports`)
+- **Error Handling:** `try/catch` + Winston logs + notificar admin (fallos críticos)
+- **Retries:** 4 reintentos, 800ms delay (APIs externas)
+- **Logging:** `logger.info('Event', {context})`, `logger.error('Error', {error, stack})`
+- **Validation:** Validar payloads webhooks con `utils/validation.js`
 
 ---
 
@@ -889,61 +458,25 @@ Validar siempre los payloads de los webhooks antes de procesar (`utils/validatio
 
 ## Common Patterns
 
-### Getting a client
-
 ```javascript
-// En webhooks (viene desde middleware con validación whitelist)
-const client = req.client || await getClientByLocationId(locationId); // GHL webhooks
-const client = req.client || await getClientByInstanceName(instanceName); // WhatsApp webhooks
+// Getting client
+const client = req.client || await getClientByLocationId(locationId); // GHL
+const client = req.client || await getClientByInstanceName(instanceName); // WhatsApp
 
-// Directo (sin middleware)
-const client = await getClientByLocationId(locationId);
-const client = await getClientByInstanceName(instanceName);
-```
-
-**Nota:** Todos los clientes se limpian automáticamente con `.trim()` en campos críticos (`conversation_provider_id`, `instance_apikey`, etc.) para prevenir errores por espacios/saltos de línea (`\r\n`).
-
-### Using cache
-
-```javascript
-const { getCachedContactId, setCachedContactId } = require('./services/cache');
-
-// Verificar caché primero
+// Using cache
 let contactId = getCachedContactId(locationId, phone);
-
 if (!contactId) {
-  // No en caché, buscar en API
-  const result = await ghlAPI.searchContact(client, phone);
-  contactId = result.contacts[0].id;
-
-  // Cachear para próximas veces
+  contactId = (await ghlAPI.searchContact(client, phone)).contacts[0].id;
   setCachedContactId(locationId, phone, contactId);
 }
-```
 
-### Calling GHL API
-
-```javascript
-const contact = await ghlAPI.getContact(client, contactId);
-```
-
-### Sending WhatsApp
-
-```javascript
+// APIs
+await ghlAPI.getContact(client, contactId);
 await evolutionAPI.sendText(instanceName, apikey, number, message);
-```
 
-### Processing audio
-
-```javascript
+// Media processing
 const media = await evolutionAPI.getMediaBase64(instance, apikey, messageId);
 const text = await openaiAPI.transcribeAudio(media.base64, media.mimetype);
-```
-
-### Processing image
-
-```javascript
-const media = await evolutionAPI.getMediaBase64(instance, apikey, messageId);
 const description = await openaiAPI.analyzeImage(media.base64);
 ```
 
@@ -951,72 +484,44 @@ const description = await openaiAPI.analyzeImage(media.base64);
 
 ## Known Issues & Caveats
 
-- **Webhook de Evolution API:** Configurar el MISMO webhook para TODAS las instancias: `https://domain.com/webhook/whatsapp`. El servidor identifica automáticamente la instancia por el campo `instance` del payload
-- Los tokens GHL expiran (típicamente 24h) - el auto-refresco con caché maneja esto
-- **Caché en memoria (volátil):**
-  - Tokens GHL, contactIds y conversationIds se cachean 1h en RAM
-  - Se pierden al reiniciar servidor (esto es normal)
-  - Primer mensaje después de reinicio es más lento, siguientes rápidos
-  - Consumo memoria estimado: ~330KB para 150 clientes
-- **Cola de mensajes fallidos (`services/messageCache.js`):**
-  - Mensajes que fallan por instancia caída se encolan automáticamente (8h TTL)
-  - Retry automático: 5min, 10min, 20min, 40min, 1h (máx 5 intentos)
-  - Se procesan cuando: a) instancia se reconecta, b) cada 30min en monitor
-  - **Importante:** No marca contacto como "no-wa" si instancia está caída
-  - `checkWhatsAppNumber()` retorna `true`/`false`/`null` (null = no se pudo verificar)
-  - Cola se pierde al reiniciar servidor (volátil, no persistente)
-- **Timeout de APIs externas:**
-  - Timeout global: 15 segundos para la mayoría de APIs (GHL, Evolution, OpenAI)
-  - **Flowise timeout: 2 minutos (120s)** - Permite tiempo para uso de herramientas por agentes
-  - Previene bloqueos indefinidos, puede generar más notificaciones si APIs están lentas
-- **Validación whitelist de webhooks:**
-  - Solo procesa webhooks de `location_id`/`instance_name` que existan en BD
-  - Rechaza con 403 webhooks no autorizados
-  - Loguea intentos sospechosos
-- **RLS en Supabase:**
-  - Row Level Security activado en `clients_details`
-  - Usa política "Allow authenticated access" (funciona con anon key)
-  - No requiere service_role key
-- **Limpieza automática de campos de BD:**
-  - Todos los campos críticos (`conversation_provider_id`, `instance_apikey`, etc.) se limpian con `.trim()` al leer de BD
-  - Previene errores por espacios en blanco o saltos de línea (`\r\n`) ocultos
-  - **Recomendación:** Limpiar BD manualmente: `UPDATE clients_details SET conversation_provider_id = TRIM(conversation_provider_id)`
-- **Números de teléfono - Formato E.164:**
-  - GHL usa formato **E.164 estándar**: `+34660722687` (único formato oficial soportado)
-  - WhatsApp envía: `34660722687@s.whatsapp.net` o `34660722687:0@s.whatsapp.net` (con device ID)
-  - **Device ID (`:0`, `:1`, etc.):** WhatsApp multi-device añade sufijo de dispositivo (AD-JID format)
-  - Conversión automática: se quita `@s.whatsapp.net`, `:digit` (device ID), y se añade `+` al inicio
-  - **Búsqueda optimizada:** Solo se busca en formato E.164 (1 llamada vs 3 llamadas multi-formato)
-  - Si falla create por duplicado, se extrae el `contactId` del error (fallback inteligente)
-- **Cálculo de retraso de mensaje:** `Math.min(Math.max(text.length * 50, 2000), 10000)`
-- **Límite mensajes:** >4096 chars se truncan automáticamente con aviso
-- **Límite buffer agent:** Máximo 7 mensajes por buffer (previene abuse), notifica admin si se alcanza
-- **Fallback OpenAI:** Si Whisper/Vision fallan → `"🎤/🖼️ [no procesado]"` + notificación admin
-- Las notificaciones de admin requieren que `ADMIN_INSTANCE` y `ADMIN_INSTANCE_APIKEY` estén configurados
+**Webhooks & Validación:**
+- Webhook único Evolution API: `https://domain.com/webhook/whatsapp` (identifica instancia por payload)
+- Whitelist: solo procesa `location_id`/`instance_name` en BD (rechaza 403 si no autorizado)
+
+**Caché & Memoria (volátil):**
+- Tokens GHL, contactIds, conversationIds cacheados 1h en RAM
+- Se pierde al reiniciar (normal) - primer mensaje post-reinicio más lento
+- Cola mensajes fallidos: 8h TTL, retry 5-10-20-40-60min (máx 5 intentos)
+
+**Timeouts:**
+- APIs (GHL, Evolution, OpenAI): 15s
+- Flowise: 2min (permite herramientas)
+
+**Formatos & Límites:**
+- Teléfonos: GHL usa E.164 (`+34660722687`), WhatsApp envía con `@s.whatsapp.net` y device ID (`:0`, `:1`)
+- Mensajes: >4096 chars se truncan
+- Buffer agent: máx 7 mensajes (notifica admin)
+- Delay mensajes: `Math.min(Math.max(text.length * 50, 2000), 10000)`
+
+**Otros:**
+- Campos BD se limpian con `.trim()` automáticamente
+- Tokens GHL auto-refresh cuando expiran <5min
+- Fallback OpenAI: `"🎤/🖼️ [no procesado]"` + notificación admin
 
 ---
 
 ## Development Workflow
 
-### Local Development
+**Local:** `npm start` / `npm run dev` → Logs: `tail -f combined.log` → Health: `curl localhost:3000/health`
 
-1. **Iniciar servidor:** `npm start` or `npm run dev`
-2. **Revisar logs:** `tail -f combined.log` o salida de consola
-3. **Probar webhooks:** Usar herramientas como ngrok para pruebas locales
-4. **Revisar salud:** `curl http://localhost:3000/health`
-5. **Monitorear uso:** Vigilar logs de Winston en busca de errores
+**Process (Nuevas features/fixes):**
+1. Implementar código
+2. Ejecutar tests (`npm test`)
+3. Verificar logs
+4. Actualizar CLAUDE.md (conciso)
+5. Probar manualmente (cliente beta si es nuevo)
 
-### Development Process (Cambios de Código)
-
-Cuando implementes nuevas funcionalidades o fixes, sigue este proceso:
-
-1. **Implementar código** - Hacer los cambios necesarios
-2. **Ejecutar tests** - `npm test` para verificar no hay regresiones
-3. **Verificar logs** - Revisar que no haya warnings o errors inesperados
-4. **Actualizar CLAUDE.md** - Documentar cambios importantes, remover info obsoleta (ser conciso)
-5. **Probar manualmente** - Si es feature nueva, probar con cliente beta primero
-
-**Importante:** Tests y documentación son parte del proceso, no opcionales.
+**Importante:** Tests y documentación no son opcionales
 
 ### Production Deployment (Easypanel/Contabo VPS)
 
@@ -1063,34 +568,14 @@ Cuando implementes nuevas funcionalidades o fixes, sigue este proceso:
 
 **Estado:** ~78 tests unitarios passing, 4 pending (integración)
 
-### Ejecutar Tests
+**Comandos:** `npm test`, `npm run test:watch`
 
-```bash
-npm test                    # Ejecutar todos los tests
-npm run test:watch          # Modo watch (auto-reload)
-npm test -- test/unit/**/*  # Solo tests unitarios
-```
+**Cobertura:**
+- Unitarios: validation, notifications, ghl, sanitizer, cache, webhookAuth
+- Agent System: agentBuffer, flowise, langfuse, validation-agent
+- Integración: webhooks (pendientes)
 
-### Cobertura Actual
-
-**✅ Tests Unitarios Existentes:**
-- `validation.test.js` - Validación payloads + truncamiento (11 tests)
-- `notifications.test.js` - Sistema notificaciones (5 tests)
-- `ghl.test.js` - Lógica GHL (token refresh, phone format) (9 tests)
-- `sanitizer.test.js` - Redacción datos sensibles (6 tests)
-- `cache.test.js` - Caché en memoria (10 tests)
-- `webhookAuth.test.js` - Validación whitelist (8 tests)
-
-**✅ Tests Sistema Flow (Agent):**
-- `agentBuffer.test.js` - Buffer + debouncing (7 tests)
-- `flowise.test.js` - Parser respuestas (6 tests)
-- `langfuse.test.js` - Fetch prompts (4 tests)
-- `validation-agent.test.js` - Validación payloads agent (11 tests)
-
-**⏳ Tests Integración (test/integration/):**
-- `webhooks.test.js` - HTTP endpoints (4 tests preparados, deshabilitados)
-
-**Documentación:** Ver `test/README.md` para más detalles
+Ver `test/README.md` para detalles
 
 ---
 
