@@ -393,6 +393,12 @@ WhatsApp (usuario recibe 2-3 mensajes naturales)
 - Cliente usa `whatsapp_provider = 'evolution'`
 - Mensaje es tipo `outbound` (saliente de GHL)
 
+**IMPORTANTE:** Cuando `is_beta = true`, el Agent System (Flowise) se **desactiva automáticamente**:
+- El webhook `/webhook/agent` rechaza mensajes de clientes beta (retorna 200 con error)
+- Los clientes beta deben usar **GHL Conversation AI** en lugar de Flowise
+- Las respuestas se procesan vía `/webhook/ghl` con el LLM message splitter
+- **NO configurar** webhooks a `/webhook/agent` para clientes beta
+
 **SQL:**
 ```sql
 -- Activar cliente para beta (LLM Message Splitter)
@@ -522,16 +528,22 @@ logBetaUsage(client, 'feature-name', { metadata: 'value' });
 - `POST /webhook/ghl` - Recibe mensajes salientes de GHL (uno por cada `location_id`)
   - **Validación whitelist:** Verifica que `location_id` exista en BD antes de procesar
   - Rechaza con 403 si `location_id` no está autorizado
+  - **Beta feature:** Si cliente tiene `is_beta = true` + `whatsapp_provider = 'evolution'`:
+    - Intercepta mensaje outbound de GHL Conversation AI
+    - Divide con LLM (GPT-4o-mini) en hasta 3 partes
+    - Envía partes a Evolution API con delays (2s, 1.5s)
+    - Si falla, cae a flujo normal (mensaje completo)
 - `POST /webhook/whatsapp` - **Webhook único** que recibe mensajes de TODAS las instancias de Evolution API
   - Identifica la instancia mediante el campo `instance` en el payload
   - **Validación whitelist:** Verifica que `instance_name` exista en BD antes de procesar
   - Rechaza con 403 si instancia no está autorizada
   - Busca automáticamente la configuración del cliente en Supabase usando `instance_name`
   - Soporta múltiples instancias simultáneamente sin necesidad de endpoints diferentes
-- `POST /webhook/agent` - **Webhook de agent system**
+- `POST /webhook/agent` - **Webhook de agent system** (solo clientes NO beta)
   - Recibe mensajes de GHL para procesamiento con IA conversacional
   - **Validación whitelist:** Verifica que `location_id` exista en BD
   - Rechaza con 403 si no está autorizado
+  - **Rechaza clientes beta (200):** Clientes beta usan GHL Conversation AI, no Flowise
   - Buffering de mensajes con debouncing de 7 segundos
   - Procesamiento asíncrono con Flowise + Langfuse
   - Retorna 200 inmediatamente, procesamiento ocurre en background

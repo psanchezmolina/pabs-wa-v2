@@ -1,7 +1,7 @@
 const logger = require('../utils/logger');
 const { notifyAdmin } = require('../utils/notifications');
 const { validateAgentPayload } = require('../utils/validation');
-const { getAgentConfig } = require('../services/supabase');
+const { getAgentConfig, getClientByLocationId } = require('../services/supabase');
 const { getCachedContactId, setCachedContactId, getCachedConversationId, setCachedConversationId } = require('../services/cache');
 const ghlAPI = require('../services/ghl');
 const langfuseAPI = require('../services/langfuse');
@@ -72,11 +72,28 @@ async function handleAgentWebhook(req, res) {
     // Cliente viene del middleware (ya validado)
     const client = req.client;
 
+    // ⛔ VALIDACIÓN: Rechazar clientes beta (usan GHL Conversation AI, no Flowise)
+    if (client && client.is_beta) {
+      logger.warn('⛔ Beta client - Agent System disabled (uses GHL Conversation AI)', {
+        location_id,
+        contact_id,
+        agente,
+        is_beta: client.is_beta
+      });
+
+      return res.status(200).json({
+        success: false,
+        message: 'Beta client - Agent System disabled. This client uses GHL Conversation AI instead of Flowise.',
+        note: 'Configure GHL Conversation AI in GHL settings. Messages are processed via /webhook/ghl with LLM message splitter.'
+      });
+    }
+
     logger.info('✅ Step 1 COMPLETE: Agent webhook validated', {
       location_id,
       contact_id,
       agente,
-      canal
+      canal,
+      is_beta: client?.is_beta || false
     });
 
     // 🐛 DEBUG: Loguear payload completo para Instagram
