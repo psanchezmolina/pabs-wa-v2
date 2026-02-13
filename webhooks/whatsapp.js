@@ -8,6 +8,10 @@ const mediaHelper = require('../utils/mediaHelper');
 const { getCachedContactId, setCachedContactId, getCachedConversationId, setCachedConversationId } = require('../services/cache');
 const { attemptAutoRestart, processQueuedMessages } = require('../utils/instanceMonitor');
 
+// ✅ GRACE PERIOD para auto-restart (tiempo real via webhooks)
+const GRACE_PERIOD_MS = 60 * 1000; // 1 minuto
+const gracePeriodTimers = new Map(); // Key: instanceName, Value: { timer, disconnectedAt }
+
 async function handleWhatsAppWebhook(req, res) {
   const startTime = Date.now();
 
@@ -42,23 +46,108 @@ async function handleWhatsAppWebhook(req, res) {
 
     // Solo actuar en cambios de estado significativos
     if (state === 'close') {
-      // Instancia desconectada - intentar auto-restart
-      logger.warn('Instance disconnected via webhook', { instanceName, state });
+      // ✅ INSTANCIA DESCONECTADA - INICIAR GRACE PERIOD
+      logger.warn('Instance disconnected via webhook - starting grace period', {
+        instanceName,
+        state,
+        gracePeriodMs: GRACE_PERIOD_MS
+      });
+
+      // Cancelar timer anterior si existe
+      if (gracePeriodTimers.has(instanceName)) {
+        clearTimeout(gracePeriodTimers.get(instanceName).timer);
+        logger.debug('Cleared previous grace period timer', { instanceName });
+      }
 
       // Obtener cliente para API key
       const client = await getClientByInstanceName(instanceName);
-      if (client) {
-        // attemptAutoRestart maneja notificaciones y cola de mensajes
-        await attemptAutoRestart(instanceName, client.instance_apikey, [client.location_id]);
+      if (!client) {
+        logger.error('Client not found for disconnected instance', { instanceName });
+        return res.status(200).json({ success: true, handled: 'connection_close', error: 'client_not_found' });
       }
 
-      return res.status(200).json({ success: true, handled: 'connection_close' });
+      // Notificar al admin que se detectó desconexión (esperando grace period)
+      await notifyAdmin('Instancia Desconectada - Monitoreando', {
+        instance_name: instanceName,
+        location_id: client.location_id,
+        error: `Esperando ${GRACE_PERIOD_MS / 1000}s antes de auto-restart`,
+        endpoint: 'CONNECTION_UPDATE Webhook',
+        details: formatGracePeriodNotification(instanceName, GRACE_PERIOD_MS)
+      });
+
+      // ✅ PROGRAMAR AUTO-RESTART DESPUÉS DEL GRACE PERIOD
+      const timer = setTimeout(async () => {
+        logger.info('Grace period expired - attempting auto-restart', {
+          instanceName,
+          gracePeriodMs: GRACE_PERIOD_MS
+        });
+
+        // Verificar si todavía está desconectada
+        const currentState = await evolutionAPI.checkInstanceConnection(
+          instanceName,
+          client.instance_apikey
+        );
+
+        if (!currentState.connected) {
+          // Sigue desconectada - intentar auto-restart
+          logger.warn('Instance still disconnected after grace period', {
+            instanceName,
+            state: currentState.state
+          });
+
+          await attemptAutoRestart(instanceName, client.instance_apikey, [client.location_id]);
+        } else {
+          // Se reconectó durante el grace period - todo bien
+          logger.info('Instance reconnected during grace period - no restart needed', {
+            instanceName,
+            state: currentState.state
+          });
+        }
+
+        // Limpiar timer
+        gracePeriodTimers.delete(instanceName);
+      }, GRACE_PERIOD_MS);
+
+      // Guardar timer para poder cancelarlo si reconecta
+      gracePeriodTimers.set(instanceName, {
+        timer: timer,
+        disconnectedAt: new Date()
+      });
+
+      return res.status(200).json({
+        success: true,
+        handled: 'connection_close',
+        gracePeriod: true,
+        gracePeriodMs: GRACE_PERIOD_MS
+      });
     }
 
     if (state === 'open') {
-      // Instancia reconectada - procesar cola de mensajes
+      // ✅ INSTANCIA RECONECTADA
       logger.info('Instance reconnected via webhook', { instanceName, state });
 
+      // Cancelar grace period timer si existe
+      if (gracePeriodTimers.has(instanceName)) {
+        const gracePeriod = gracePeriodTimers.get(instanceName);
+        clearTimeout(gracePeriod.timer);
+        gracePeriodTimers.delete(instanceName);
+
+        const disconnectedDuration = new Date() - gracePeriod.disconnectedAt;
+        logger.info('Instance reconnected during grace period - auto-restart canceled', {
+          instanceName,
+          disconnectedDurationMs: disconnectedDuration
+        });
+
+        // Notificar reconexión durante grace period
+        await notifyAdmin('Instancia Reconectada (Grace Period)', {
+          instance_name: instanceName,
+          error: `Reconectada automáticamente después de ${Math.round(disconnectedDuration / 1000)}s`,
+          endpoint: 'CONNECTION_UPDATE Webhook',
+          details: `✅ La instancia *${instanceName}* se reconectó sola después de ${Math.round(disconnectedDuration / 1000)} segundos.\n\nNo se requirió auto-restart.`
+        });
+      }
+
+      // Procesar cola de mensajes pendientes
       const client = await getClientByInstanceName(instanceName);
       if (client) {
         await processQueuedMessages(instanceName, client.instance_apikey);
@@ -435,6 +524,26 @@ async function handleWhatsAppWebhook(req, res) {
       note: 'Error logged but returning 200 to prevent retries'
     });
   }
+}
+
+// ============================================================================
+// HELPER: Formatear notificación de grace period
+// ============================================================================
+
+function formatGracePeriodNotification(instanceName, gracePeriodMs) {
+  const timestamp = new Date().toLocaleString('es-ES', { timeZone: 'Europe/Madrid' });
+  const gracePeriodSeconds = Math.round(gracePeriodMs / 1000);
+
+  let message = '⏳ *Instancia Desconectada - Monitoreando*\n\n';
+  message += `⏰ Detectado: ${timestamp}\n`;
+  message += `📱 Instancia: *${instanceName}*\n`;
+  message += `⏱️ Grace period: *${gracePeriodSeconds} segundos*\n\n`;
+  message += '━━━━━━━━━━━━━━━━━━━\n\n';
+  message += '💡 *Esperando reconexión automática*\n';
+  message += `   • Si se reconecta sola: No se requiere acción\n`;
+  message += `   • Si sigue desconectada: Auto-restart en ${gracePeriodSeconds}s\n`;
+  message += '   • Los mensajes se están encolando para envío posterior\n';
+  return message;
 }
 
 module.exports = { handleWhatsAppWebhook };

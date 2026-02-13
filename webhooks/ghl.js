@@ -57,6 +57,22 @@ async function handleGHLWebhook(req, res) {
       });
 
       try {
+        // ✅ VERIFICAR ESTADO DE INSTANCIA ANTES DE PROCESAR
+        logger.info('🔍 Checking instance connection state...', {
+          instanceName: client.instance_name
+        });
+
+        const instanceState = await evolutionAPI.checkInstanceConnection(
+          client.instance_name,
+          client.instance_apikey
+        );
+
+        logger.info('Instance state checked', {
+          instanceName: client.instance_name,
+          connected: instanceState.connected,
+          state: instanceState.state
+        });
+
         // Obtener teléfono del contacto
         let contactPhone;
 
@@ -73,6 +89,38 @@ async function handleGHLWebhook(req, res) {
         // Formatear número WhatsApp
         const waNumber = contactPhone.replace(/^\+/, '') + '@s.whatsapp.net';
 
+        // ✅ SI INSTANCIA ESTÁ DESCONECTADA → ENCOLAR MENSAJE SIN DIVIDIR
+        if (!instanceState.connected) {
+          logger.warn('⚠️ Instance disconnected - queueing original message', {
+            instanceName: client.instance_name,
+            state: instanceState.state,
+            messageId
+          });
+
+          // Encolar mensaje original completo (no dividido)
+          messageCache.addMessage(
+            client.instance_name,
+            messageId,
+            waNumber,
+            contactPhone,
+            messageText
+          );
+
+          await notifyAdmin('Instance disconnected - message queued', {
+            instance_name: client.instance_name,
+            location_id: locationId,
+            endpoint: '/webhook/ghl',
+            state: instanceState.state
+          });
+
+          return res.status(200).json({
+            success: true,
+            queued: true,
+            reason: 'Instance disconnected',
+            state: instanceState.state
+          });
+        }
+
         // Dividir mensaje con LLM
         const { parte1, parte2, parte3 } = await splitMessageWithLLM(messageText);
 
@@ -88,6 +136,13 @@ async function handleGHLWebhook(req, res) {
 
         // Enviar cada parte secuencialmente
         for (let i = 0; i < parts.length; i++) {
+          logger.info(`📤 Sending part ${i + 1}/${parts.length}...`, {
+            instanceName: client.instance_name,
+            waNumber,
+            partLength: parts[i].length,
+            partPreview: parts[i].substring(0, 50)
+          });
+
           await evolutionAPI.sendText(
             client.instance_name,
             client.instance_apikey,
@@ -95,34 +150,49 @@ async function handleGHLWebhook(req, res) {
             parts[i]
           );
 
-          logger.info(`✅ Sent part ${i + 1}/${parts.length} via Evolution API`);
+          logger.info(`✅ Part ${i + 1}/${parts.length} sent successfully`, {
+            instanceName: client.instance_name,
+            waNumber
+          });
 
-          // Delay entre mensajes para simular escritura humana
-          // - Parte 1 → Parte 2: 2 segundos
-          // - Parte 2 → Parte 3: 1.5 segundos
+          // ✅ DELAY FIJO DE 4 SEGUNDOS entre partes
           if (i < parts.length - 1) {
-            const delay = i === 0 ? 2000 : 1500;
-            await new Promise(resolve => setTimeout(resolve, delay));
+            const DELAY_BETWEEN_PARTS = 4000; // 4 segundos fijos
+            logger.debug(`⏱️ Waiting ${DELAY_BETWEEN_PARTS}ms before next part...`);
+            await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_PARTS));
           }
         }
 
-        logger.info('✅ Beta flow completed - All parts sent', {
+        logger.info('✅ Beta flow completed - All parts sent to Evolution API', {
           locationId,
           totalParts: parts.length,
           waNumber
         });
 
-        // Intentar marcar como entregado en GHL (no crítico si falla)
-        try {
-          await ghlAPI.updateMessageStatus(client, messageId, 'delivered');
-          logger.debug('✅ Message marked as delivered in GHL', { messageId });
-        } catch (statusError) {
-          logger.debug('Could not update message status', {
-            messageId,
-            error: statusError.message
-          });
-        }
+        // ✅ MARCAR COMO DELIVERED EN BACKGROUND (no bloqueante)
+        // No esperar a que complete - retornar 200 OK inmediatamente
+        setTimeout(async () => {
+          try {
+            // Esperar a que Evolution API entregue la última parte (~10s máximo)
+            const EVOLUTION_MAX_DELAY = 10000;
+            await new Promise(resolve => setTimeout(resolve, EVOLUTION_MAX_DELAY));
 
+            // Ahora actualizar estado en GHL
+            await ghlAPI.updateMessageStatus(client, messageId, 'delivered');
+            logger.debug('✅ Message marked as delivered in GHL (background)', {
+              messageId,
+              locationId
+            });
+          } catch (statusError) {
+            // Esperado para mensajes no-provider (403 errors son normales)
+            logger.debug('Could not update message status (background)', {
+              messageId,
+              error: statusError.message
+            });
+          }
+        }, 0);
+
+        // ✅ RETORNAR 200 OK INMEDIATAMENTE (no esperar status update)
         return res.status(200).json({
           success: true,
           beta: true,
@@ -130,24 +200,56 @@ async function handleGHLWebhook(req, res) {
         });
 
       } catch (betaError) {
-        logger.error('❌ Beta flow failed - Falling back to normal flow', {
+        logger.error('❌ Beta flow failed', {
           locationId,
           error: betaError.message,
           stack: betaError.stack
         });
 
+        // ✅ VERIFICAR SI ES PROBLEMA DE INSTANCIA
+        const instanceState = await evolutionAPI.checkInstanceConnection(
+          client.instance_name,
+          client.instance_apikey
+        );
+
+        if (!instanceState.connected) {
+          // Instancia está caída - encolar mensaje para retry
+          const waNumber = contactPhone?.replace(/^\+/, '') + '@s.whatsapp.net' || '';
+
+          messageCache.addMessage(
+            client.instance_name,
+            messageId,
+            waNumber,
+            contactPhone || req.body.phone || '',
+            messageText  // Mensaje original
+          );
+
+          logger.info('Instance disconnected - message queued after error', {
+            instanceName: client.instance_name,
+            state: instanceState.state
+          });
+
+          return res.status(200).json({
+            success: true,
+            queued: true,
+            reason: 'Instance disconnected during send'
+          });
+        }
+
+        // ✅ NO ES PROBLEMA DE INSTANCIA - NOTIFICAR ADMIN
         await notifyAdmin('Beta message splitter failed', {
           location_id: locationId,
           error: betaError.message,
           stack: betaError.stack,
           endpoint: '/webhook/ghl',
+          instance_state: instanceState.state,
           contactId,
-          messageId,
-          note: 'Falling back to normal flow'
+          messageId
         });
 
-        // Continuar con flujo normal (no hacer return, dejar que caiga al código siguiente)
+        // Continuar con flujo normal como fallback
         logger.info('⚠️ Continuing with normal flow after beta failure');
+        // NO RETURN - falls through to normal flow
       }
     }
 

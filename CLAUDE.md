@@ -22,7 +22,7 @@
 - **Database:** Supabase (PostgreSQL) - tabla `clients_details`
 - **HTTP Client:** Axios + axios-retry (4 reintentos, 800ms de retraso)
 - **Logging:** Winston (logs JSON estructurados)
-- **Testing:** Mocha + Chai + Supertest + Nock (~78 tests unitarios passing, 4 pending integración)
+- **Testing:** Mocha + Chai + Supertest + Nock (100 tests passing, 7 pending integración)
 - **Deploy:** Docker en Easypanel/Contabo VPS
 
 ### External APIs
@@ -261,11 +261,14 @@ Sistema de feature flags simple para testear nuevas funcionalidades con clientes
 - `is_beta = true` + `whatsapp_provider = 'evolution'`
 - **IMPORTANTE:** Desactiva Agent System automáticamente (no configurar `/webhook/agent`)
 
-**Lógica (servicios/messageSplitter.js):**
+**Lógica (servicios/messageSplitter.js + webhooks/ghl.js):**
 - Máximo 3 fragmentos con puntuación final
 - Respeta párrafos (\n\n)
 - Listas NUNCA se dividen
-- Delays: 2s entre parte 1-2, 1.5s entre parte 2-3
+- **Delays fijos:** 4s entre todas las partes (garantiza orden + tiempo lectura)
+- **Verificación pre-envío:** Check de instancia conectada antes de procesar
+- **Encolar si desconectada:** Mensajes se encolan completos (no divididos) para retry
+- **Status asíncrono:** Marca "delivered" en background (~10s) sin bloquear webhook
 - Fallback: mensaje completo si falla
 
 ```sql
@@ -370,9 +373,12 @@ Ver `utils/betaFeatures.js`: `isBetaClient()`, `executeBetaAware()`, `logBetaUsa
 - Triggers: token refresh, webhooks, OpenAI, instancias desconectadas
 
 ### 5. Monitor de Instancias + Auto-Restart
-- Detección: Webhook `CONNECTION_UPDATE` (primario) + Polling 2h (backup)
-- Auto-restart: `/instance/restart` → Si éxito: procesa cola mensajes, Si falla: notifica "Requiere QR"
-- Carga: ~1,800 requests/día (150 instancias)
+- **Detección:** Webhook `CONNECTION_UPDATE` (tiempo real) + Polling 2h (backup)
+- **Grace period:** 1 minuto - espera reconexión natural antes de auto-restart
+- **Auto-restart:** `/instance/restart` → Si éxito: procesa cola mensajes, Si falla: notifica "Requiere QR"
+- **Cancelación automática:** Si reconecta durante grace period, cancela auto-restart
+- **Ubicación:** `webhooks/whatsapp.js` (webhook) + `utils/instanceMonitor.js` (polling backup)
+- Carga: ~1,800 requests/día polling (webhooks no cuentan)
 
 ### 6. Agent System
 
