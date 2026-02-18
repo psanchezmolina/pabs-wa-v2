@@ -203,6 +203,8 @@ async function handleGHLWebhook(req, res) {
         logger.error('❌ Beta flow failed', {
           locationId,
           error: betaError.message,
+          apiStatus: betaError.response?.status,
+          apiResponse: betaError.response?.data,
           stack: betaError.stack
         });
 
@@ -240,6 +242,8 @@ async function handleGHLWebhook(req, res) {
         await notifyAdmin('Beta message splitter failed', {
           location_id: locationId,
           error: betaError.message,
+          api_status: betaError.response?.status,
+          api_response: betaError.response?.data,
           stack: betaError.stack,
           endpoint: '/webhook/ghl',
           instance_state: instanceState.state,
