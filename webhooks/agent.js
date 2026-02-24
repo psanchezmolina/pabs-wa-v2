@@ -96,6 +96,19 @@ async function handleAgentWebhook(req, res) {
       is_beta: client?.is_beta || false
     });
 
+    // Retornar 200 inmediatamente — todo el procesamiento ocurre en background
+    // Esto evita el timeout de 60s de GHL cuando Whisper tarda en transcribir
+    res.status(200).json({
+      success: true,
+      message: 'Message queued for processing',
+      contact_id,
+      canal
+    });
+
+    // Continuar procesamiento en background (async, no bloquea respuesta HTTP)
+    (async () => {
+    try {
+
     // 🐛 DEBUG: Loguear payload completo para Instagram
     logger.info('🐛 DEBUG: Full payload received', {
       message_body: message_body,
@@ -132,7 +145,6 @@ async function handleAgentWebhook(req, res) {
             stack: attachmentError.stack,
             attachment
           });
-          console.log(`❌ ATTACHMENT ERROR:`, attachmentError);
           processedMessage += `\n[Attachment ${i + 1} could not be processed]`;
         }
       }
@@ -154,7 +166,6 @@ async function handleAgentWebhook(req, res) {
           stack: attachmentError.stack,
           url: customData.message_attachment
         });
-        console.log(`❌ ATTACHMENT ERROR:`, attachmentError);
         processedMessage += `\n[Attachment could not be processed]`;
       }
     }
@@ -463,13 +474,27 @@ async function handleAgentWebhook(req, res) {
       agentBuffer.clearBuffer(contact_id, canal);
     }
 
-    // Retornar 200 inmediatamente (procesamiento asíncrono)
-    return res.status(200).json({
-      success: true,
-      message: 'Message queued for processing',
-      contact_id,
-      canal
-    });
+  } catch (error) {
+      logger.error('❌ Agent background processing error', {
+        error: error.message,
+        stack: error.stack,
+        location_id,
+        contact_id
+      });
+
+      await notifyAdmin('Agent Background Processing Error', {
+        location_id,
+        contact_id,
+        agente,
+        error: error.message,
+        stack: error.stack,
+        endpoint: '/webhook/agent',
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        responseData: error.response?.data
+      });
+    }
+    })(); // fin IIFE background
 
   } catch (error) {
     logger.error('❌ Agent webhook error', {
@@ -479,24 +504,27 @@ async function handleAgentWebhook(req, res) {
       contact_id: req.body?.contact_id
     });
 
-    await notifyAdmin('Agent Webhook Error', {
-      location_id: req.body?.location_id,
-      contact_id: req.body?.contact_id,
-      agente: req.body?.customData?.agente,
-      error: error.message,
-      stack: error.stack,
-      endpoint: '/webhook/agent',
-      status: error.response?.status,
-      statusText: error.response?.statusText,
-      responseData: error.response?.data
-    });
+    // Solo llega aquí si el error ocurre ANTES de enviar el 200
+    // (validación o extracción de variables básicas)
+    if (!res.headersSent) {
+      await notifyAdmin('Agent Webhook Error', {
+        location_id: req.body?.location_id,
+        contact_id: req.body?.contact_id,
+        agente: req.body?.customData?.agente,
+        error: error.message,
+        stack: error.stack,
+        endpoint: '/webhook/agent',
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        responseData: error.response?.data
+      });
 
-    // IMPORTANTE: Devolver 200 para evitar reintentos de GHL
-    return res.status(200).json({
-      success: false,
-      error: error.message,
-      note: 'Error logged but returning 200 to prevent retries'
-    });
+      return res.status(200).json({
+        success: false,
+        error: error.message,
+        note: 'Error logged but returning 200 to prevent retries'
+      });
+    }
   }
 }
 
