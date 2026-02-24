@@ -108,8 +108,13 @@ function validateAgentPayload(body) {
     return { valid: false, missing: 'customData' };
   }
 
-  if (!body.customData.message_body) {
-    return { valid: false, missing: 'customData.message_body' };
+  // message_body puede ser vacío si hay attachments (ej: audio sin texto)
+  const hasAttachments =
+    (body.message?.attachments?.length > 0) ||
+    !!body.customData?.message_attachment;
+
+  if (!body.customData.message_body && !hasAttachments) {
+    return { valid: false, missing: 'customData.message_body (required when no attachments)' };
   }
 
   if (!body.customData.agente) {

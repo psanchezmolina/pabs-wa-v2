@@ -93,6 +93,22 @@ async function validateWhatsAppWebhook(req, res, next) {
  */
 async function validateAgentWhitelist(req, res, next) {
   try {
+    // 🐛 DEBUG: Log RAW payload para diagnosticar audio de API oficial
+    logger.info('🔍 RAW Agent webhook received', {
+      body_keys: Object.keys(req.body || {}),
+      location_id: req.body?.location_id,
+      contact_id: req.body?.contact_id,
+      customData_keys: Object.keys(req.body?.customData || {}),
+      message_body: req.body?.customData?.message_body,
+      message_body_empty: !req.body?.customData?.message_body,
+      agente: req.body?.customData?.agente,
+      message_type: req.body?.message?.type,
+      message_attachments: req.body?.message?.attachments,
+      attachments_count: req.body?.message?.attachments?.length || 0,
+      customData_attachment: req.body?.customData?.message_attachment,
+      ip: req.ip
+    });
+
     // GHL envía location.id en lugar de location_id directo
     const locationId = req.body?.location_id || req.body?.location?.id;
 

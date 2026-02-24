@@ -38,9 +38,22 @@ async function processAttachment(attachmentUrl) {
     // Detectar extensión del archivo desde la URL
     const fileExtension = attachmentUrl.split('.').pop().toLowerCase().split('?')[0];
 
+    // Extensiones de audio conocidas (para fallback cuando content-type es genérico)
+    const audioExtensions = ['ogg', 'opus', 'm4a', 'mp3', 'wav', 'aac', 'oga', 'webm'];
+    const isAudioByExtension = audioExtensions.includes(fileExtension);
+
+    logger.info('🔍 Attachment type detection', {
+      contentType,
+      fileExtension,
+      isAudioByExtension
+    });
+
     // Procesar según tipo usando helpers compartidos
-    if (contentType.startsWith('audio/')) {
-      return await mediaHelper.processAudioToText(base64, contentType, context);
+    if (contentType.startsWith('audio/') ||
+        (contentType === 'application/octet-stream' && isAudioByExtension)) {
+      // Usar el content-type real si es audio/, o construir uno si es octet-stream
+      const mimeType = contentType.startsWith('audio/') ? contentType : `audio/${fileExtension}`;
+      return await mediaHelper.processAudioToText(base64, mimeType, context);
 
     } else if (contentType.startsWith('image/')) {
       return await mediaHelper.processImageToText(base64, '', context);
