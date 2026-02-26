@@ -3,6 +3,10 @@ const logger = require('../utils/logger');
 const { withRetry } = require('../utils/retry');
 const { notifyAdmin } = require('../utils/notifications');
 
+// Instancia axios dedicada para Flowise (evita doble retry con axios-retry global)
+// Timeout por defecto de 120s - se puede overridear por request
+const flowiseAxios = axios.create();
+
 /**
  * Llamar al agente de Flowise
  * @param {object} agentConfig - Configuración del agente de BD
@@ -34,8 +38,11 @@ async function callFlowiseAgent(agentConfig, question, overrideConfig) {
   });
 
   try {
+    // withRetry: 4 intentos con 800ms delay, cada uno con 120s timeout limpio
+    // Usa flowiseAxios dedicado para evitar doble retry con axios-retry global
+    // (sin esto, un 5xx causaba 4x4=16 reintentos potenciales)
     const response = await withRetry(() =>
-      axios.post(flowise_webhook_url, payload, {
+      flowiseAxios.post(flowise_webhook_url, payload, {
         headers,
         timeout: 120000  // 2 minutos - permitir tiempo para uso de herramientas
       })

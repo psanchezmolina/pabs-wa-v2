@@ -216,13 +216,15 @@ async function handleGHLWebhook(req, res) {
 
         if (!instanceState.connected) {
           // Instancia está caída - encolar mensaje para retry
-          const waNumber = contactPhone?.replace(/^\+/, '') + '@s.whatsapp.net' || '';
+          // Nota: contactPhone puede no estar definido si el error ocurrió antes de obtenerlo
+          const fallbackPhone = req.body.phone || '';
+          const waNumber = fallbackPhone ? fallbackPhone.replace(/^\+/, '') + '@s.whatsapp.net' : '';
 
           messageCache.addMessage(
             client.instance_name,
             messageId,
             waNumber,
-            contactPhone || req.body.phone || '',
+            fallbackPhone,
             messageText  // Mensaje original
           );
 

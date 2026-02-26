@@ -9,6 +9,9 @@ const flowiseAPI = require('../services/flowise');
 const agentBuffer = require('../services/agentBuffer');
 const mediaProcessor = require('../services/mediaProcessor');
 
+// Tracker de reintentos por contacto+canal (evita reintentos infinitos)
+const retryTracker = new Map();
+
 async function handleAgentWebhook(req, res) {
   // 🐛 DEBUG: Log INMEDIATO para confirmar que llega el webhook
   const initialLog = {
@@ -210,7 +213,7 @@ async function handleAgentWebhook(req, res) {
     logger.info('🔍 Step 5: Setting up debounce (7s)...', { contact_id, canal });
 
     try {
-      agentBuffer.setupDebounce(contact_id, canal, async () => {
+      const processBuffer = async () => {
         // IMPORTANTE: Este callback se ejecuta de forma asíncrona
         // Necesita su propio manejo de errores
         try {
@@ -297,10 +300,21 @@ async function handleAgentWebhook(req, res) {
           } else {
             // Crear conversación
             logger.info('➕ Creating new conversation...', { ghlContactId });
-            const newConv = await ghlAPI.createConversation(client, ghlContactId);
-            conversationId = newConv.id;
-            setCachedConversationId(location_id, ghlContactId, conversationId);
-            logger.info('✅ Conversation created', { conversationId });
+            try {
+              const newConv = await ghlAPI.createConversation(client, ghlContactId);
+              conversationId = newConv.id;
+              setCachedConversationId(location_id, ghlContactId, conversationId);
+              logger.info('✅ Conversation created', { conversationId });
+            } catch (convError) {
+              // GHL devuelve 400 "Conversation already exists" con el conversationId
+              if (convError.response?.status === 400 && convError.response?.data?.conversationId) {
+                conversationId = convError.response.data.conversationId;
+                setCachedConversationId(location_id, ghlContactId, conversationId);
+                logger.info('✅ Conversation already existed, using returned ID', { conversationId });
+              } else {
+                throw convError;
+              }
+            }
           }
         }
 
@@ -408,8 +422,9 @@ async function handleAgentWebhook(req, res) {
           totalParts: parts.length
         });
 
-        // Limpiar buffer
+        // Limpiar buffer y retry tracker
         agentBuffer.clearBuffer(contact_id, canal);
+        retryTracker.delete(`${contact_id}_${canal}`);
 
         logger.info('🎉 Agent processing complete!', {
           contact_id,
@@ -429,23 +444,51 @@ async function handleAgentWebhook(req, res) {
           location_id
         });
 
-        await notifyAdmin('Agent Debounce Processing Error', {
-          contact_id,
-          canal,
-          location_id,
-          agente,
-          error: debounceError.message,
-          stack: debounceError.stack,
-          endpoint: '/webhook/agent',
-          status: debounceError.response?.status,
-          statusText: debounceError.response?.statusText,
-          responseData: debounceError.response?.data
-        });
+        // Determinar si el error es retryable (timeout, 5xx, network)
+        const isRetryable = debounceError.code === 'ECONNABORTED' ||
+                            debounceError.code === 'ERR_NETWORK' ||
+                            debounceError.code === 'ECONNRESET' ||
+                            (debounceError.response?.status >= 500);
 
-        // Limpiar buffer en caso de error
-        agentBuffer.clearBuffer(contact_id, canal);
+        const retryKey = `${contact_id}_${canal}`;
+        const retryCount = retryTracker.get(retryKey) || 0;
+
+        if (isRetryable && retryCount < 1) {
+          // Programar UN reintento en 30s, mantener buffer intacto
+          retryTracker.set(retryKey, retryCount + 1);
+          agentBuffer.setupDebounce(contact_id, canal, processBuffer, 30000);
+
+          logger.info('🔄 Retryable error, scheduling retry in 30s', {
+            contact_id,
+            canal,
+            location_id,
+            agente,
+            retryCount: retryCount + 1,
+            error: debounceError.message
+          });
+        } else {
+          // Error no retryable o ya se reintentó - rendirse
+          retryTracker.delete(retryKey);
+          agentBuffer.clearBuffer(contact_id, canal);
+
+          await notifyAdmin('Agent Debounce Processing Error', {
+            contact_id,
+            canal,
+            location_id,
+            agente,
+            error: debounceError.message,
+            stack: debounceError.stack,
+            endpoint: '/webhook/agent',
+            status: debounceError.response?.status,
+            statusText: debounceError.response?.statusText,
+            responseData: debounceError.response?.data,
+            retried: retryCount > 0
+          });
+        }
       }
-      }, 7000);
+      };
+
+      agentBuffer.setupDebounce(contact_id, canal, processBuffer, 7000);
 
       logger.info('✅ Step 5 COMPLETE: Debounce configured', {
         contact_id,

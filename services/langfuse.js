@@ -5,6 +5,11 @@ const logger = require('../utils/logger');
 const { withRetry } = require('../utils/retry');
 const { notifyAdmin } = require('../utils/notifications');
 
+// Instancia axios dedicada para Langfuse (evita doble retry con axios-retry global)
+const langfuseAxios = axios.create({
+  timeout: 10000  // 10s por intento - suficiente para un GET a servicio local
+});
+
 // Caché de prompts (1 hora TTL)
 const promptCache = new NodeCache({
   stdTTL: 3600,  // 1 hora
@@ -38,8 +43,10 @@ async function getPrompt(agentName, publicKey, secretKey) {
   logger.info('Fetching prompt from Langfuse', { agentName });
 
   try {
+    // withRetry: 4 intentos con 800ms delay, cada uno con 10s timeout limpio
+    // Usa langfuseAxios dedicado para evitar doble retry con axios-retry global
     const response = await withRetry(() =>
-      axios.get(
+      langfuseAxios.get(
         `${config.LANGFUSE_BASE_URL}/api/public/v2/prompts/${agentName}`,
         {
           auth: {

@@ -27,3 +27,7 @@ Thumbs.db
 # Build
 dist/
 build/
+
+# Temp files
+TROUBLESHOOT-HAIRPIN-NAT.md
+temp-html.html
