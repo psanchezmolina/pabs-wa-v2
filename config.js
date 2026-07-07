@@ -77,6 +77,12 @@ module.exports = {
   RESEND_API_KEY: process.env.RESEND_API_KEY,
   ADMIN_EMAIL: process.env.ADMIN_EMAIL,
 
+  // Canal de notificaciones admin:
+  //   'whatsapp' (default): intenta WhatsApp, fallback a email si falla (comportamiento histórico)
+  //   'email': solo email (Resend), sin intentar WhatsApp
+  //   'none': silencio total, solo deja traza en log (no envía nada externo)
+  NOTIFY_CHANNEL: (process.env.NOTIFY_CHANNEL || 'whatsapp').trim().toLowerCase(),
+
   // Legacy (QR panel)
   N8N_BASE_URL: process.env.N8N_BASE_URL,
   N8N_AUTH_HEADER: process.env.N8N_AUTH_HEADER,

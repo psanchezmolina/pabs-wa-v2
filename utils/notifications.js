@@ -340,37 +340,52 @@ async function notifyAdmin(errorType, details) {
         ? formatAggregatedError(type, data)
         : formatSingleError(type, data);
 
-      try {
-        // 1. Intentar WhatsApp primero
-        await sendToWhatsApp(message);
+      const channel = config.NOTIFY_CHANNEL;
 
-      } catch (whatsappError) {
-        // 2. WhatsApp falló, usar Email como fallback
-        logger.warn('WhatsApp notification failed, trying email fallback', {
-          whatsappError: whatsappError.message
+      // Modo silencio: no enviar notificaciones externas, solo dejar traza en log
+      if (channel === 'none') {
+        logger.warn('Admin notification suppressed (NOTIFY_CHANNEL=none)', {
+          errorType: type
         });
+        return;
+      }
 
+      // Helper de envío por email (usado como canal directo o como fallback)
+      const sendViaEmail = async (reason) => {
         if (!isEmailConfigured()) {
-          logger.error('CRITICAL: Email fallback not configured, notification lost', {
+          logger.error('CRITICAL: Email not configured, notification lost', {
             errorType: type,
-            whatsappError: whatsappError.message
+            reason
           });
           return;
         }
-
         try {
           const htmlContent = formatErrorEmailHtml(type, isAggregated ? data.details[data.details.length - 1] : data);
           await sendEmail(type, htmlContent);
-          logger.info('Notification sent via email (fallback successful)');
-
+          logger.info('Notification sent via email', { errorType: type, reason });
         } catch (emailError) {
-          // 3. Ambos fallaron - CRÍTICO
-          logger.error('CRITICAL: Both WhatsApp and Email notifications failed', {
+          logger.error('CRITICAL: Email notification failed', {
             errorType: type,
-            whatsappError: whatsappError.message,
+            reason,
             emailError: emailError.message
           });
         }
+      };
+
+      // Canal email directo: no intentar WhatsApp
+      if (channel === 'email') {
+        await sendViaEmail('NOTIFY_CHANNEL=email');
+        return;
+      }
+
+      // Canal 'whatsapp' (default): intentar WhatsApp, fallback a email si falla
+      try {
+        await sendToWhatsApp(message);
+      } catch (whatsappError) {
+        logger.warn('WhatsApp notification failed, trying email fallback', {
+          whatsappError: whatsappError.message
+        });
+        await sendViaEmail(`WhatsApp failed: ${whatsappError.message}`);
       }
     });
 
